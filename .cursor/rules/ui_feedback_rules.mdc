@@ -1,6 +1,6 @@
 ---
 description: UI feedback guidelines
-globs: js/*.js
+globs: src/js/modules/*.js, *.html, *.css
 alwaysApply: false
 ---
 # UI Feedback Module Rules

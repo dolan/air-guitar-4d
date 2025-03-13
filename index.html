@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Air Guitar 4D</title>
+    <link rel="stylesheet" href="src/css/styles.css">
+</head>
+<body>
+    <header>
+        <h1>Air Guitar 4D</h1>
+    </header>
+    
+    <main>
+        <section id="camera-container">
+            <div id="video-wrapper">
+                <video id="webcam" autoplay playsinline></video>
+                <canvas id="overlay"></canvas>
+            </div>
+        </section>
+        
+        <section id="controls">
+            <div id="tone-selection">
+                <h2>Guitar Tone</h2>
+                <select id="guitar-type">
+                    <option value="acoustic">Acoustic</option>
+                    <option value="electric">Electric</option>
+                    <option value="bass">Bass</option>
+                </select>
+            </div>
+            
+            <div id="effects-control">
+                <h2>Effects</h2>
+                <!-- Effects controls will be added here -->
+            </div>
+        </section>
+    </main>
+    
+    <footer>
+        <p>Air Guitar 4D - Make music with your hands!</p>
+    </footer>
+
+    <!-- Scripts will be loaded here -->
+    <script src="src/js/app.js" type="module"></script>
+</body>
+</html> 

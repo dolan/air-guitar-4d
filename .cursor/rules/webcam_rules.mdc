@@ -1,6 +1,6 @@
 ---
 description: Web Camera Usage
-globs: *Webcam*.js, *.html
+globs: src/js/modules/*webca*.js, *.html, *.css
 alwaysApply: false
 ---
 # Webcam Module Rules

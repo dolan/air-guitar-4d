@@ -1,0 +1,36 @@
+{
+  "name": "air-guitar-4d",
+  "version": "0.1.0",
+  "description": "Web-based air guitar application using hand tracking",
+  "main": "index.html",
+  "scripts": {
+    "start": "serve .",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint src/**/*.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/air-guitar-4d.git"
+  },
+  "keywords": [
+    "air-guitar",
+    "web",
+    "hand-tracking",
+    "computer-vision",
+    "tensorflow",
+    "tone.js"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "@tensorflow-models/hand-pose-detection": "^2.0.0",
+    "@tensorflow/tfjs": "^4.10.0",
+    "tone": "^14.7.77"
+  },
+  "devDependencies": {
+    "eslint": "^8.42.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-plugin-import": "^2.27.5",
+    "serve": "^14.2.0"
+  }
+} 

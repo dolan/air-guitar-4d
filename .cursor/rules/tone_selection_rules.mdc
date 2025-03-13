@@ -1,6 +1,6 @@
 ---
 description: tone selection UI tooling
-globs: js/*Tone*.js, *.html
+globs: src/js/modules/*tone*.js, *.html, *.css
 alwaysApply: false
 ---
 # Tone Selection Module Rules

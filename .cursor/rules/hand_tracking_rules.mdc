@@ -1,6 +1,6 @@
 ---
 description: Rules for hand tracking implementation
-globs: js/*Hand*.js, *.html
+globs: src/js/*Hand*.js, *.html
 alwaysApply: false
 ---
 # Hand Tracking Module Rules

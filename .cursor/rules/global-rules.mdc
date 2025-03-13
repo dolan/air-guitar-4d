@@ -21,27 +21,29 @@ alwaysApply: false
 
 After each prompted task is completed:
   1. Pause and ask the user to confirm the items you wish to check off the list. if the user agrees, proceed to step 2. If the user does not agree, then proceed executing the prompt, but do not update the checklist.
-  2. Prepare an update for the checklist based on the tasks completed
-  3. Update the [project checklist](../../implementation-checklist.md) 
+  2. Prepare an update for the checklist based on the tasks completed, do not change the status of any tasks that are already completed. (checked)
+  3. Update the [project checklist](mdc:../../implementation-checklist.md) 
 
 
 # Project Structure
-```text
 
+```
 /air-guitar-4d
+  |-- README.md
   |-- index.html               
-  |-- /css
-      |-- main.css
-      |-- webcam.css
-      |-- sound.css
-  |-- /js
-      |-- Webcam.js
-      |-- HandTracking.js
-      |-- MotionAnalysis.js
-      |-- SoundEngine.js
-      |-- UIFeedback.js
-      |-- ToneSelection.js
-  |-- /assets
-      |-- icons
-      |-- sounds
+  |-- /src
+      |-- /css
+          |-- main.css
+          |-- webcam.css
+          |-- sound.css
+      |-- /js
+          |-- Webcam.js
+          |-- HandTracking.js
+          |-- MotionAnalysis.js
+          |-- SoundEngine.js
+          |-- UIFeedback.js
+          |-- ToneSelection.js
+      |-- /assets
+          |-- icons
+          |-- sounds
 ```

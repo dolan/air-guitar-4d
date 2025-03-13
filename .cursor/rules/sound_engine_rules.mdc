@@ -1,6 +1,6 @@
 ---
 description: Sound engine module
-globs: js/*Sound*.js, *.html
+globs: src/js/modules/*sound*.js, *.html, *.css
 alwaysApply: false
 ---
 # Sound Engine Module Rules

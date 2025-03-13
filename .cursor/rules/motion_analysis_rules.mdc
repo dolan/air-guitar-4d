@@ -1,6 +1,6 @@
 ---
 description: motion analysis module
-globs: js/*Motion*.js, *.html
+globs: src/js/modules/*motion*.js, *.html
 alwaysApply: false
 ---
 # Motion Analysis Module Rules
