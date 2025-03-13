@@ -1,0 +1,47 @@
+---
+description: rules for err'thing
+globs: *.js, *.css, *.html
+alwaysApply: false
+---
+
+# Global Instructions
+- Use **vanilla JavaScript** for all interactive logic.
+- Each JavaScript module should be implemented as a **single class per file**.
+- **CSS files** must be separate from the HTML for styling.
+- The main entry page should be named **index.html**.
+- All libraries should be imported directly from **browser-compatible CDNs**.
+- The application must run entirely in the browser without additional installs.
+- Prompt for **camera** and **microphone** permissions as needed.
+- If permissions are denied, the app must display clear visual feedback explaining what functionality is degraded and why.
+- Use `console.debug()` to log important operational steps.
+- Avoid spamming logs with repetitive or trivial data unless needed for tracing unexpected behavior.
+- Comment all **public methods** in **JSDoc** format for clarity and consistency.
+- Display clear error messages in the UI for critical failures (e.g., failed webcam access).
+- Include fallback instructions where possible (e.g., "Try refreshing the page" or "Check browser permissions").
+
+After each prompted task is completed:
+  1. Pause and ask the user to confirm the items you wish to check off the list. if the user agrees, proceed to step 2. If the user does not agree, then proceed executing the prompt, but do not update the checklist.
+  2. Prepare an update for the checklist based on the tasks completed
+  3. Update the [project checklist](../../implementation-checklist.md) 
+
+
+# Project Structure
+```text
+
+/air-guitar-4d
+  |-- index.html               
+  |-- /css
+      |-- main.css
+      |-- webcam.css
+      |-- sound.css
+  |-- /js
+      |-- Webcam.js
+      |-- HandTracking.js
+      |-- MotionAnalysis.js
+      |-- SoundEngine.js
+      |-- UIFeedback.js
+      |-- ToneSelection.js
+  |-- /assets
+      |-- icons
+      |-- sounds
+```

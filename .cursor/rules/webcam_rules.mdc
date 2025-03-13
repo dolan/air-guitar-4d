@@ -1,0 +1,9 @@
+---
+description: Web Camera Usage
+globs: *Webcam*.js, *.html
+alwaysApply: false
+---
+# Webcam Module Rules
+- Handle video streaming, permission requests, and error management.
+- Display clear error messages for failed webcam access.
+- Provide visual cues when camera functionality is degraded.

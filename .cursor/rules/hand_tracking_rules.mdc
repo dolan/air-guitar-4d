@@ -1,0 +1,9 @@
+---
+description: Rules for hand tracking implementation
+globs: js/*Hand*.js, *.html
+alwaysApply: false
+---
+# Hand Tracking Module Rules
+- Implement hand detection logic via TensorFlow.js or MediaPipe Hands.
+- Ensure robust tracking under variable lighting conditions.
+- Map hand positioning data to logical control structures for sound generation.

@@ -1,0 +1,9 @@
+---
+description: UI feedback guidelines
+globs: js/*.js
+alwaysApply: false
+---
+# UI Feedback Module Rules
+- Implement visual overlays for hand tracking and feedback cues.
+- Clearly indicate when degraded functionality is affecting the experience.
+- Use consistent visual cues to reduce user confusion.

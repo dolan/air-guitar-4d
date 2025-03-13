@@ -1,0 +1,8 @@
+---
+description: tone selection UI tooling
+globs: js/*Tone*.js, *.html
+alwaysApply: false
+---
+# Tone Selection Module Rules
+- Provide UI for selecting guitar tones and effects.
+- Ensure the interface is intuitive and clearly indicates active selections.

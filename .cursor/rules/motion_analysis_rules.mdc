@@ -1,0 +1,9 @@
+---
+description: motion analysis module
+globs: js/*Motion*.js, *.html
+alwaysApply: false
+---
+# Motion Analysis Module Rules
+- Map detected hand motion to guitar performance data.
+- Implement gesture recognition logic to distinguish strumming intensity and technique.
+- Use smoothing filters to stabilize noisy motion data.

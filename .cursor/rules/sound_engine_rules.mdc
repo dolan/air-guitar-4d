@@ -1,0 +1,9 @@
+---
+description: Sound engine module
+globs: js/*Sound*.js, *.html
+alwaysApply: false
+---
+# Sound Engine Module Rules
+- Manage sound synthesis, pitch shifting, and audio effects.
+- Integrate with Tone.js to ensure efficient sound playback.
+- Provide distinct tones for electric, acoustic, and bass guitar types.
