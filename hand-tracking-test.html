@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hand Tracking Test - Air Guitar 4D</title>
+    <!-- Load TensorFlow.js and MediaPipe libraries -->
+    <!-- TensorFlow.js core -->
+    <script src="https://unpkg.com/@tensorflow/tfjs-core@4.10.0/dist/tf-core.js"></script>
+    <!-- WebGL backend -->
+    <script src="https://unpkg.com/@tensorflow/tfjs-backend-webgl@4.10.0/dist/tf-backend-webgl.js"></script>
+    <!-- The fully bundled TensorFlow.js library -->
+    <script src="https://unpkg.com/@tensorflow/tfjs@4.10.0/dist/tf.js"></script>
+    <!-- MediaPipe Hands -->
+    <script src="https://unpkg.com/@mediapipe/hands@0.4.1646424915/hands.js"></script>
+    <!-- Hand pose detection model -->
+    <script src="https://unpkg.com/@tensorflow-models/hand-pose-detection@2.0.0/dist/hand-pose-detection.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #222;
+            color: #fff;
+            margin: 0;
+            padding: 20px;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        h1 {
+            color: #00bcd4;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        #video-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        
+        #webcam {
+            width: 100%;
+            display: block;
+            background-color: #333;
+            transform: scaleX(-1); /* Flip the video horizontally */
+        }
+        
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+            background-color: rgba(0, 0, 0, 0.2); /* Slight darkening to see the overlay better */
+            border: 3px solid red; /* Add a red border to make sure it's visible */
+            transform: scaleX(-1); /* Flip the canvas horizontally to match the video */
+        }
+        
+        #controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        button {
+            background-color: #00bcd4;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.2s;
+        }
+        
+        button:hover {
+            background-color: #00a0b7;
+        }
+        
+        button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+        
+        #camera-select {
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #555;
+            background-color: #333;
+            color: #fff;
+        }
+        
+        #status {
+            margin-top: 10px;
+            color: #00bcd4;
+            font-weight: bold;
+        }
+        
+        #debug-info {
+            width: 100%;
+            max-width: 800px;
+            background-color: #333;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+        }
+        
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        
+        .info-label {
+            font-weight: bold;
+            color: #00bcd4;
+        }
+        
+        .info-value {
+            color: #fff;
+        }
+        
+        /* Error banner for critical issues */
+        #error-banner {
+            background-color: rgba(255, 59, 48, 0.9);
+            color: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Hand Tracking Test</h1>
+        <p>Test the hand tracking functionality for Air Guitar 4D</p>
+    </header>
+    
+    <div class="container">
+        <!-- Error banner for critical issues -->
+        <div id="error-banner"></div>
+        
+        <div id="video-container">
+            <video id="webcam" autoplay playsinline></video>
+            <canvas id="overlay"></canvas>
+        </div>
+        
+        <div id="controls">
+            <button id="start-camera">Start Camera</button>
+            <select id="camera-select" disabled>
+                <option value="">Loading cameras...</option>
+            </select>
+            <button id="toggle-guide" disabled>Toggle Position Guide</button>
+            <button id="calibrate" disabled>Calibrate Hand Tracking</button>
+        </div>
+        
+        <div id="status">Status: Waiting for camera</div>
+        
+        <div id="debug-info">
+            <h3>Debug Information</h3>
+            <div class="info-row">
+                <span class="info-label">Left Hand:</span>
+                <span class="info-value" id="left-hand-status">Not detected</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Right Hand:</span>
+                <span class="info-value" id="right-hand-status">Not detected</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Detected Chord:</span>
+                <span class="info-value" id="chord-status">None</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Strumming Motion:</span>
+                <span class="info-value" id="strum-status">None</span>
+            </div>
+        </div>
+    </div>
+    
+    <script type="module">
+        // Global error handling
+        window.addEventListener('error', (event) => {
+            console.error('GLOBAL ERROR:', event.error || event.message);
+            const status = document.getElementById('status');
+            if (status) {
+                status.textContent = `Status: Error: ${event.error ? event.error.message : event.message}`;
+                status.style.color = 'red';
+            }
+            showErrorBanner(`GLOBAL ERROR: ${event.error ? event.error.message : event.message}`);
+        });
+
+        // Additional check for unhandled promise rejections
+        window.addEventListener('unhandledrejection', (event) => {
+            console.error('UNHANDLED PROMISE REJECTION:', event.reason);
+            const status = document.getElementById('status');
+            if (status) {
+                status.textContent = `Status: Promise Error: ${event.reason ? event.reason.message : 'Unknown error'}`;
+                status.style.color = 'red';
+            }
+            showErrorBanner(`UNHANDLED PROMISE REJECTION: ${event.reason ? event.reason.message : 'Unknown error'}`);
+        });
+        
+        // Function to show critical errors in UI
+        function showErrorBanner(message) {
+            const banner = document.getElementById('error-banner');
+            if (banner) {
+                banner.textContent = message;
+                banner.style.display = 'block';
+            }
+        }
+
+        // Console log proxy to help debugging
+        const originalConsoleDebug = console.debug;
+        console.debug = function() {
+            // Only modify behavior in development
+            const status = document.getElementById('status');
+            const args = Array.from(arguments);
+            
+            // Display the last debug message in the status bar (but only brief messages)
+            if (status && typeof args[0] === 'string' && args[0].length < 100) {
+                status.textContent = `Debug: ${args[0]}`;
+                setTimeout(() => {
+                    status.textContent = status.textContent.replace('Debug: ', 'Status: ');
+                }, 2000);
+            }
+            
+            // Call the original debug function
+            originalConsoleDebug.apply(console, args);
+        };
+
+        // Use an async IIFE to handle TensorFlow initialization
+        (async () => {
+            try {
+                // Check if libraries are loaded
+                console.log('Library check:');
+                console.log('TensorFlow.js loaded:', typeof tf !== 'undefined');
+                console.log('MediaPipe Hands loaded:', typeof Hands !== 'undefined');
+                console.log('HandPoseDetection loaded:', typeof handPoseDetection !== 'undefined');
+                
+                // Alert user of compatibility issues
+                if (typeof tf === 'undefined' || typeof handPoseDetection === 'undefined') {
+                    document.getElementById('status').textContent = 'Status: Required libraries not loaded. Check console for details.';
+                    showErrorBanner('Required libraries not loaded. Please check your internet connection and try again.');
+                    console.error('Missing required libraries. Make sure your browser supports TensorFlow.js and that scripts are loading correctly.');
+                    return; // Don't proceed if libraries are missing
+                }
+                
+                // Make sure TensorFlow.js is ready before importing our modules
+                if (window.tf) {
+                    await tf.ready();
+                    console.debug('TensorFlow.js is ready');
+                } else {
+                    console.error('TensorFlow.js not found in global scope');
+                    document.getElementById('status').textContent = 'Status: Error loading TensorFlow.js';
+                    showErrorBanner('TensorFlow.js not found. Please check your internet connection and try again.');
+                    return; // Don't proceed if TensorFlow isn't ready
+                }
+                
+                // Now import our modules
+                try {
+                    console.debug('Attempting to import HandTracking module...');
+                    const { HandTracking } = await import('./src/js/modules/hand-tracking.js');
+                    console.debug('HandTracking module imported successfully');
+                    
+                    console.debug('Attempting to import UIFeedback module...');
+                    const { UIFeedback } = await import('./src/js/modules/ui-feedback.js');
+                    console.debug('UIFeedback module imported successfully');
+                    
+                    console.debug('Attempting to import WebcamHandler module...');
+                    const { WebcamHandler } = await import('./src/js/modules/webcam.js');
+                    console.debug('WebcamHandler module imported successfully');
+                    
+                    // Make the imported classes available globally
+                    window.HandTracking = HandTracking;
+                    window.UIFeedback = UIFeedback;
+                    window.WebcamHandler = WebcamHandler;
+                    console.debug('Made imported modules available globally');
+                } catch (importError) {
+                    console.error('Module import error:', importError);
+                    document.getElementById('status').textContent = `Status: Error importing modules: ${importError.message}`;
+                    showErrorBanner(`Error importing modules: ${importError.message}`);
+                    throw importError;
+                }
+                
+                class HandTrackingTest {
+                    constructor() {
+                        this.elements = {
+                            video: document.getElementById('webcam'),
+                            overlay: document.getElementById('overlay'),
+                            startButton: document.getElementById('start-camera'),
+                            cameraSelect: document.getElementById('camera-select'),
+                            toggleGuideButton: document.getElementById('toggle-guide'),
+                            calibrate: document.getElementById('calibrate'),
+                            status: document.getElementById('status'),
+                            leftHandStatus: document.getElementById('left-hand-status'),
+                            rightHandStatus: document.getElementById('right-hand-status'),
+                            chordStatus: document.getElementById('chord-status'),
+                            strumStatus: document.getElementById('strum-status')
+                        };
+                        
+                        // Check for all required elements
+                        for (const [key, element] of Object.entries(this.elements)) {
+                            if (!element) {
+                                console.error(`Missing required element: ${key}`);
+                                showErrorBanner(`Missing required element in the page: ${key}`);
+                                return;
+                            }
+                        }
+                        
+                        // Initialize modules
+                        this.webcamHandler = new WebcamHandler(this.elements.video);
+                        this.handTracking = new HandTracking(this.elements.video, this.elements.overlay);
+                        this.uiFeedback = new UIFeedback(this.elements.overlay);
+                        
+                        // State
+                        this.isRunning = false;
+                        this.animationFrameId = null;
+                        
+                        // Set up event listeners
+                        this.setupEventListeners();
+                        
+                        // Initialize camera options
+                        this.updateStatus('Getting camera list...');
+                        this.initCameraOptions().catch(error => {
+                            console.error('Error initializing camera options:', error);
+                            this.updateStatus(`Error getting camera list: ${error.message}`);
+                            showErrorBanner(`Error getting camera list: ${error.message}`);
+                        });
+                    }
+                    
+                    setupEventListeners() {
+                        // Start camera button
+                        this.elements.startButton.addEventListener('click', async () => {
+                            if (!this.isRunning) {
+                                await this.startCamera();
+                            } else {
+                                this.stopCamera();
+                            }
+                        });
+                        
+                        // Camera selection
+                        this.elements.cameraSelect.addEventListener('change', async () => {
+                            if (this.isRunning) {
+                                await this.restartCamera();
+                            }
+                        });
+                        
+                        // Toggle position guide
+                        this.elements.toggleGuideButton.addEventListener('click', () => {
+                            const isVisible = this.uiFeedback.togglePositionGuide();
+                            this.elements.toggleGuideButton.textContent = 
+                                isVisible ? 'Hide Position Guide' : 'Show Position Guide';
+                        });
+                        
+                        // Calibration button
+                        document.getElementById('calibrate').addEventListener('click', async () => {
+                            if (!this.isRunning) return;
+                            
+                            this.updateStatus('Starting calibration...');
+                            
+                            try {
+                                // Pause normal processing
+                                this.stopProcessing();
+                                
+                                // Run calibration
+                                const result = await this.handTracking.calibrate();
+                                
+                                if (result && result.success) {
+                                    this.updateStatus('Calibration successful! Hand tracking ready.');
+                                } else {
+                                    this.updateStatus('Calibration failed. Please try again.');
+                                }
+                                
+                                // Resume normal processing after a brief pause
+                                setTimeout(() => {
+                                    this.startProcessing();
+                                }, 2000);
+                            } catch (error) {
+                                console.error('Error during calibration:', error);
+                                this.updateStatus(`Calibration error: ${error.message}`);
+                                this.startProcessing();
+                            }
+                        });
+                    }
+                    
+                    async initCameraOptions() {
+                        try {
+                            console.debug('Getting video devices...');
+                            
+                            // Permission may be needed first - request temporary access
+                            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                                console.debug('Requesting camera permission first...');
+                                
+                                try {
+                                    // Request temporary camera access to get device labels
+                                    const tempStream = await navigator.mediaDevices.getUserMedia({ 
+                                        video: true, 
+                                        audio: false 
+                                    });
+                                    
+                                    // Stop the stream immediately
+                                    tempStream.getTracks().forEach(track => track.stop());
+                                    console.debug('Camera permission granted temporarily for device enumeration');
+                                } catch (permError) {
+                                    console.error('Permission error:', permError);
+                                    this.updateStatus(`Camera permission denied: ${permError.message}`);
+                                    // Continue anyway - we'll still list devices, just without labels
+                                }
+                            }
+                            
+                            // Now get the list of devices
+                            const devices = await this.webcamHandler.getVideoDevices();
+                            console.debug('Got devices:', devices);
+                            
+                            // Clear existing options
+                            this.elements.cameraSelect.innerHTML = '';
+                            
+                            // Add each camera as an option
+                            if (devices.length === 0) {
+                                const option = document.createElement('option');
+                                option.value = '';
+                                option.text = 'No cameras found';
+                                this.elements.cameraSelect.appendChild(option);
+                                this.elements.cameraSelect.disabled = true;
+                            } else {
+                                devices.forEach(device => {
+                                    const option = document.createElement('option');
+                                    option.value = device.deviceId;
+                                    // Use a default name if no label (may happen if permission denied)
+                                    option.text = device.label || `Camera ${devices.indexOf(device) + 1}`;
+                                    this.elements.cameraSelect.appendChild(option);
+                                });
+                                
+                                // Enable select if we have cameras
+                                this.elements.cameraSelect.disabled = false;
+                            }
+                            
+                            // Update status
+                            if (devices.length === 0) {
+                                this.updateStatus('No cameras found');
+                            } else {
+                                this.updateStatus('Camera ready. Click "Start Camera" to begin.');
+                                // Add a default option if we have multiple cameras
+                                if (devices.length > 1) {
+                                    const defaultOption = document.createElement('option');
+                                    defaultOption.value = '';
+                                    defaultOption.text = '-- Select a camera --';
+                                    this.elements.cameraSelect.insertBefore(defaultOption, this.elements.cameraSelect.firstChild);
+                                    this.elements.cameraSelect.value = '';
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Error initializing camera options:', error);
+                            this.updateStatus(`Error: ${error.message}`);
+                            throw error;
+                        }
+                    }
+                    
+                    async startCamera() {
+                        try {
+                            this.updateStatus('Starting camera...');
+                            
+                            // Get selected device ID
+                            const deviceId = this.elements.cameraSelect.value;
+                            console.debug('Selected camera device ID:', deviceId);
+                            
+                            // Start webcam
+                            console.debug('Starting webcam with device ID:', deviceId);
+                            await this.webcamHandler.startCamera(deviceId);
+                            console.debug('Webcam started successfully');
+                            
+                            // Check video element readiness
+                            if (this.elements.video.readyState < 2) {
+                                console.debug('Video element not ready yet, waiting...');
+                                // Wait for video metadata to load
+                                await new Promise((resolve) => {
+                                    const onMetadataLoaded = () => {
+                                        console.debug('Video metadata loaded, continuing...');
+                                        this.elements.video.removeEventListener('loadeddata', onMetadataLoaded);
+                                        resolve();
+                                    };
+                                    this.elements.video.addEventListener('loadeddata', onMetadataLoaded);
+                                    
+                                    // Add a timeout just in case
+                                    setTimeout(resolve, 3000);
+                                });
+                            }
+                            
+                            // Check if canvas is correctly sized to match video
+                            if (this.elements.overlay.width !== this.elements.video.videoWidth ||
+                                this.elements.overlay.height !== this.elements.video.videoHeight) {
+                                console.debug('Updating canvas dimensions to match video');
+                                this.elements.overlay.width = this.elements.video.videoWidth;
+                                this.elements.overlay.height = this.elements.video.videoHeight;
+                            }
+                            
+                            // Test the overlay canvas explicitly
+                            const ctx = this.elements.overlay.getContext('2d');
+                            if (!ctx) {
+                                throw new Error('Could not get 2D context from overlay canvas');
+                            }
+                            
+                            // Draw a test pattern
+                            ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+                            ctx.fillRect(0, 0, this.elements.overlay.width, this.elements.overlay.height);
+                            ctx.font = '24px Arial';
+                            ctx.fillStyle = 'white';
+                            ctx.textAlign = 'center';
+                            ctx.fillText('Camera Active - Initializing Hand Tracking', 
+                                         this.elements.overlay.width/2, this.elements.overlay.height/2);
+                            
+                            console.debug('Canvas test pattern drawn successfully');
+                            
+                            // Initialize hand tracking
+                            console.debug('Setting up hand tracking detector...');
+                            try {
+                                const handTrackingResult = await this.handTracking.setup();
+                                console.debug('Hand tracking detector setup result:', handTrackingResult);
+                                
+                                // Explicitly set detector to running mode
+                                console.debug('Explicitly starting hand tracking');
+                                this.handTracking.start();
+                                console.debug('Hand tracking started, isRunning =', this.handTracking.isRunning);
+                                
+                                // Verify detector is created
+                                if (!this.handTracking.detector) {
+                                    console.error('Detector setup completed but detector is still null!');
+                                    this.updateStatus('Error: Hand tracking detector failed to initialize');
+                                    showErrorBanner('Hand tracking detector failed to initialize. Please refresh and try again.');
+                                    return;
+                                }
+                            } catch (setupError) {
+                                console.error('Hand tracking setup error:', setupError);
+                                this.updateStatus(`Hand tracking setup failed: ${setupError.message}`);
+                                showErrorBanner(`Hand tracking setup failed: ${setupError.message}`);
+                                throw setupError;
+                            }
+                            
+                            // Initialize UI feedback
+                            console.debug('Setting up UI feedback...');
+                            this.uiFeedback.setup();
+                            console.debug('UI feedback setup successful');
+                            
+                            // Start processing frames
+                            console.debug('Starting frame processing...');
+                            this.startProcessing();
+                            console.debug('Frame processing started');
+                            
+                            // Update UI
+                            this.isRunning = true;
+                            this.elements.startButton.textContent = 'Stop Camera';
+                            this.elements.toggleGuideButton.disabled = false;
+                            this.elements.calibrate.disabled = false;
+                            this.updateStatus('Hand tracking active');
+                        } catch (error) {
+                            console.error('Error starting camera:', error);
+                            console.error('Error details:', {
+                                name: error.name,
+                                message: error.message,
+                                stack: error.stack
+                            });
+                            this.updateStatus(`Error: ${error.message}`);
+                            showErrorBanner(`Error starting camera: ${error.message}`);
+                        }
+                    }
+                    
+                    stopCamera() {
+                        // Stop processing
+                        this.stopProcessing();
+                        
+                        // Stop webcam
+                        this.webcamHandler.stopCamera();
+                        
+                        // Stop hand tracking
+                        this.handTracking.stop();
+                        
+                        // Update UI
+                        this.isRunning = false;
+                        this.elements.startButton.textContent = 'Start Camera';
+                        this.elements.toggleGuideButton.disabled = true;
+                        this.elements.calibrate.disabled = true;
+                        this.updateStatus('Camera stopped');
+                        
+                        // Reset debug info
+                        this.elements.leftHandStatus.textContent = 'Not detected';
+                        this.elements.rightHandStatus.textContent = 'Not detected';
+                        this.elements.chordStatus.textContent = 'None';
+                        this.elements.strumStatus.textContent = 'None';
+                    }
+                    
+                    async restartCamera() {
+                        this.stopCamera();
+                        await this.startCamera();
+                    }
+                    
+                    startProcessing() {
+                        this.handTracking.start();
+                        this.processFrame();
+                    }
+                    
+                    stopProcessing() {
+                        if (this.animationFrameId) {
+                            cancelAnimationFrame(this.animationFrameId);
+                            this.animationFrameId = null;
+                        }
+                    }
+                    
+                    async processFrame() {
+                        try {
+                            // Debug frame processing
+                            const timestamp = Date.now();
+                            console.debug(`[${timestamp}] Processing frame`);
+                            
+                            // Check detector status before processing
+                            if (!this.handTracking.detector) {
+                                console.warn('Detector not initialized yet, trying to init again...');
+                                try {
+                                    await this.handTracking.setup();
+                                    console.debug('Auto-reinitializing detector:', !!this.handTracking.detector);
+                                    this.handTracking.start();
+                                } catch (error) {
+                                    console.error('Auto-reinitialization failed:', error.message);
+                                }
+                            }
+                            
+                            if (!this.handTracking.isRunning) {
+                                console.warn('Hand tracking not running, starting it now');
+                                this.handTracking.start();
+                            }
+                            
+                            // Process frame with hand tracking
+                            const handData = await this.handTracking.processFrame();
+                            
+                            console.debug(`[${timestamp}] Hand data returned:`, handData);
+                            
+                            if (handData) {
+                                // Check for strumming motion
+                                const strummingMotion = this.handTracking.detectStrummingMotion();
+                                console.debug(`[${timestamp}] Strumming motion:`, strummingMotion);
+                                
+                                // Check for chord formation
+                                const chordData = this.handTracking.detectChordFormation();
+                                console.debug(`[${timestamp}] Chord data:`, chordData);
+                                
+                                // Update UI feedback
+                                this.uiFeedback.updateHandPositionDisplay(handData, strummingMotion, chordData);
+                                
+                                // Update debug info
+                                this.updateDebugInfo(handData, strummingMotion, chordData);
+                                
+                                // Get canvas visibility stats
+                                const overlay = this.elements.overlay;
+                                const computedStyle = window.getComputedStyle(overlay);
+                                console.debug('[Canvas Debug]', {
+                                    visible: overlay.offsetParent !== null,
+                                    width: overlay.width,
+                                    height: overlay.height,
+                                    position: computedStyle.position,
+                                    zIndex: computedStyle.zIndex,
+                                    opacity: computedStyle.opacity,
+                                    visibility: computedStyle.visibility,
+                                    display: computedStyle.display
+                                });
+                            } else {
+                                console.debug('No hand data returned from processFrame');
+                            }
+                        } catch (error) {
+                            console.error('Error processing frame:', error);
+                        }
+                        
+                        // Request next frame
+                        this.animationFrameId = requestAnimationFrame(() => this.processFrame());
+                    }
+                    
+                    updateStatus(message) {
+                        this.elements.status.textContent = `Status: ${message}`;
+                    }
+                    
+                    updateDebugInfo(handData, strummingMotion, chordData) {
+                        // Update left hand status
+                        if (handData.left) {
+                            const confidence = handData.left.score ? 
+                                Math.round(handData.left.score * 100) : 0;
+                            this.elements.leftHandStatus.textContent = `Detected (${confidence}% confidence)`;
+                        } else {
+                            this.elements.leftHandStatus.textContent = 'Not detected';
+                        }
+                        
+                        // Update right hand status
+                        if (handData.right) {
+                            const confidence = handData.right.score ? 
+                                Math.round(handData.right.score * 100) : 0;
+                            this.elements.rightHandStatus.textContent = `Detected (${confidence}% confidence)`;
+                        } else {
+                            this.elements.rightHandStatus.textContent = 'Not detected';
+                        }
+                        
+                        // Update chord status
+                        if (chordData && chordData.name !== 'Unknown') {
+                            const confidence = chordData.confidence ? 
+                                Math.round(chordData.confidence * 100) : 0;
+                            this.elements.chordStatus.textContent = 
+                                `${chordData.name} (${confidence}% confidence)`;
+                        } else {
+                            this.elements.chordStatus.textContent = 'None';
+                        }
+                        
+                        // Update strum status
+                        if (strummingMotion) {
+                            const intensity = Math.round(strummingMotion.intensity * 100);
+                            this.elements.strumStatus.textContent = 
+                                `${strummingMotion.direction.toUpperCase()} strum (${intensity}% intensity)`;
+                            
+                            // Reset after a short time to show it's a momentary event
+                            setTimeout(() => {
+                                this.elements.strumStatus.textContent = 'None';
+                            }, 1000);
+                        }
+                    }
+                }
+                
+                // Initialize the test application immediately (no need to wait for DOMContentLoaded)
+                window.app = new HandTrackingTest();
+                
+                // Check if canvas context is properly initialized
+                const overlay = document.getElementById('overlay');
+                if (overlay) {
+                    console.debug('Overlay canvas found:', overlay);
+                    const ctx = overlay.getContext('2d');
+                    if (ctx) {
+                        console.debug('Canvas context initialized successfully');
+                        
+                        // Draw a test pattern to ensure the canvas is working
+                        ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+                        ctx.fillRect(0, 0, overlay.width, overlay.height);
+                        ctx.strokeStyle = 'white';
+                        ctx.lineWidth = 5;
+                        ctx.strokeRect(10, 10, overlay.width - 20, overlay.height - 20);
+                        ctx.fillStyle = 'white';
+                        ctx.font = '24px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.fillText('Canvas Test', overlay.width / 2, overlay.height / 2);
+                        
+                        console.debug('Test pattern drawn to canvas');
+                    } else {
+                        console.error('Failed to get 2D context from canvas');
+                        showErrorBanner('Failed to get 2D context from canvas');
+                    }
+                } else {
+                    console.error('Overlay canvas element not found');
+                    showErrorBanner('Overlay canvas element not found');
+                }
+            } catch (error) {
+                console.error('Error initializing application:', error);
+                document.getElementById('status').textContent = `Status: Error: ${error.message}`;
+                showErrorBanner(`Error initializing application: ${error.message}`);
+            }
+        })();
+
+        // Immediately check library availability
+        function checkLibraries() {
+            console.log('=== Library Availability Check ===');
+            console.log('TensorFlow.js core loaded:', typeof tf !== 'undefined');
+            console.log('TensorFlow.js backends:');
+            console.log('- WebGL:', typeof tf?.backend?.webgl !== 'undefined');
+            console.log('MediaPipe Hands loaded:', typeof Hands !== 'undefined');
+            console.log('HandPoseDetection loaded:', typeof handPoseDetection !== 'undefined');
+            
+            if (typeof handPoseDetection !== 'undefined') {
+                console.log('HandPoseDetection models:', handPoseDetection.SupportedModels);
+                console.log('MediaPipe Hands model available:', 
+                    typeof handPoseDetection.SupportedModels?.MediaPipeHands !== 'undefined');
+            }
+            
+            const status = document.getElementById('status');
+            if (status) {
+                if (typeof tf === 'undefined' || typeof handPoseDetection === 'undefined') {
+                    status.textContent = 'Status: Libraries not fully loaded';
+                    status.style.color = 'red';
+                    showErrorBanner('Required libraries not fully loaded. Please check your internet connection and try again.');
+                } else {
+                    status.textContent = 'Status: All required libraries loaded';
+                    status.style.color = 'green';
+                }
+            }
+        }
+
+        // Run check after a short delay to ensure scripts have had time to load
+        setTimeout(checkLibraries, 1000);
+    </script>
+</body>
+</html>

@@ -178,16 +178,31 @@ class AirGuitarApp {
     /**
      * Process each video frame
      */
-    processVideoFrame() {
+    async processVideoFrame() {
         if (!this.processingActive) return;
         
-        // Get processed frame data from webcam handler
-        const imageData = this.webcamHandler.processVideoFrame();
-        
-        if (imageData) {
-            // Pass the frame data to hand tracking module
-            // Note: This will be implemented when hand tracking is built
-            // this.handTracking.processFrame(imageData);
+        try {
+            // Process the frame with hand tracking
+            const handData = await this.handTracking.processFrame();
+            
+            if (handData) {
+                // Check for strumming motion
+                const strummingMotion = this.handTracking.detectStrummingMotion();
+                
+                // Check for chord formation
+                const chordData = this.handTracking.detectChordFormation();
+                
+                // Get hand orientations
+                const orientations = this.handTracking.getHandOrientations();
+                
+                // Pass data to motion analysis
+                this.motionAnalysis.processHandData(handData, strummingMotion, chordData, orientations);
+                
+                // Update UI feedback
+                this.uiFeedback.updateHandPositionDisplay(handData, strummingMotion, chordData);
+            }
+        } catch (error) {
+            console.error("Error in frame processing:", error);
         }
         
         // Request next frame
@@ -272,8 +287,28 @@ class AirGuitarApp {
     }
 }
 
-// Initialize the application when the DOM is fully loaded
-document.addEventListener('DOMContentLoaded', () => {
-    const airGuitarApp = new AirGuitarApp();
-    airGuitarApp.init();
-}); 
+// Export a function that initializes the application
+export default function initApp() {
+    console.log('Initializing Air Guitar 4D application...');
+    
+    // Initialize the application when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            const airGuitarApp = new AirGuitarApp();
+            airGuitarApp.init();
+        });
+    } else {
+        // DOM is already loaded
+        const airGuitarApp = new AirGuitarApp();
+        airGuitarApp.init();
+    }
+}
+
+// For backwards compatibility, also run the app if this script is loaded directly
+if (typeof window !== 'undefined' && !window.isImportedAsModule) {
+    window.isImportedAsModule = true;
+    document.addEventListener('DOMContentLoaded', () => {
+        const airGuitarApp = new AirGuitarApp();
+        airGuitarApp.init();
+    });
+} 

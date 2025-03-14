@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Air Guitar 4D</title>
     <link rel="stylesheet" href="src/css/styles.css">
+    <!-- Load TensorFlow.js and MediaPipe libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection@2.0.0/dist/hand-pose-detection.min.js"></script>
 </head>
 <body>
     <header>
@@ -48,6 +52,30 @@
     </footer>
 
     <!-- Scripts will be loaded here -->
-    <script src="src/js/app.js" type="module"></script>
+    <script type="module">
+        // Use an async IIFE to handle TensorFlow initialization
+        (async () => {
+            try {
+                // Make sure TensorFlow.js is ready before importing our app
+                if (window.tf) {
+                    await tf.ready();
+                    console.debug('TensorFlow.js is ready');
+                } else {
+                    console.error('TensorFlow.js not loaded properly');
+                    document.getElementById('camera-status').textContent = 'Error loading TensorFlow.js';
+                    return;
+                }
+                
+                // Import and initialize the app
+                const { default: initApp } = await import('./src/js/app.js');
+                if (typeof initApp === 'function') {
+                    initApp();
+                }
+            } catch (error) {
+                console.error('Error initializing application:', error);
+                document.getElementById('camera-status').textContent = `Error: ${error.message}`;
+            }
+        })();
+    </script>
 </body>
 </html> 

@@ -50,6 +50,7 @@ main {
     height: 100%;
     display: block;
     object-fit: cover;
+    transform: scaleX(-1); /* Flip the video horizontally */
 }
 
 #overlay {
@@ -59,6 +60,9 @@ main {
     width: 100%;
     height: 100%;
     pointer-events: none;
+    z-index: 10; /* Ensure overlay is above video */
+    background-color: rgba(0, 0, 0, 0.2); /* Slight darkening to see the overlay better */
+    transform: scaleX(-1); /* Flip the canvas horizontally to match the video */
 }
 
 .status-message {
@@ -167,4 +171,24 @@ footer {
     background-color: #2c2c2c;
     margin-top: 2rem;
     color: #aaa;
+}
+
+/* Add styles for hand landmarks */
+.hand-landmark {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: rgba(255, 255, 0, 0.7);
+    transform: translate(-50%, -50%);
+    z-index: 11;
+}
+
+/* Add styles for hand connections */
+.hand-connection {
+    position: absolute;
+    height: 2px;
+    background-color: rgba(0, 255, 255, 0.7);
+    transform-origin: 0 0;
+    z-index: 11;
 } 

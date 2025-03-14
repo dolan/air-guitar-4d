@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Hand Tracking Test</title>
+    <!-- Load libraries sequentially -->
+    <script>
+        // Global error handler
+        window.addEventListener('error', function(event) {
+            console.error('Global error:', event.error || event.message);
+            logMessage('ERROR: ' + (event.error ? event.error.message : event.message));
+        });
+    </script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #222;
+            color: #fff;
+            margin: 0;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: #00bcd4;
+        }
+        
+        #controls {
+            margin: 20px 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        button {
+            background-color: #00bcd4;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+        
+        #status {
+            padding: 10px;
+            margin: 10px 0;
+            background-color: #333;
+            border-radius: 5px;
+        }
+        
+        #video-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin: 20px 0;
+        }
+        
+        #webcam {
+            width: 100%;
+            border-radius: 8px;
+            background-color: #333;
+        }
+        
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: 3px solid red;
+            box-sizing: border-box;
+            border-radius: 8px;
+        }
+        
+        #console {
+            background-color: #333;
+            padding: 10px;
+            border-radius: 5px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            margin-top: 20px;
+        }
+        
+        #console div {
+            margin: 2px 0;
+            padding: 1px 0;
+            border-bottom: 1px solid #444;
+        }
+        
+        .error {
+            color: #ff6060;
+        }
+        
+        .success {
+            color: #60ff60;
+        }
+        
+        .warning {
+            color: #ffff60;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Simple Hand Tracking Test</h1>
+        
+        <div id="status">Status: Waiting for initialization</div>
+        
+        <div id="controls">
+            <button id="load-tf">1. Load TensorFlow</button>
+            <button id="load-mediapipe" disabled>2. Load MediaPipe</button>
+            <button id="start-camera" disabled>3. Start Camera</button>
+            <button id="init-detector" disabled>4. Initialize Detector</button>
+            <button id="test-detection" disabled>5. Test Detection</button>
+            <button id="draw-test" disabled>6. Test Canvas Drawing</button>
+            <button id="toggle-detection" disabled>7. Toggle Continuous Detection</button>
+        </div>
+        
+        <div id="video-container">
+            <video id="webcam" autoplay playsinline></video>
+            <canvas id="overlay"></canvas>
+        </div>
+        
+        <div id="console"></div>
+    </div>
+    
+    <script>
+        // DOM Elements
+        const elements = {
+            status: document.getElementById('status'),
+            webcam: document.getElementById('webcam'),
+            overlay: document.getElementById('overlay'),
+            console: document.getElementById('console'),
+            buttons: {
+                loadTF: document.getElementById('load-tf'),
+                loadMediaPipe: document.getElementById('load-mediapipe'),
+                startCamera: document.getElementById('start-camera'),
+                initDetector: document.getElementById('init-detector'),
+                testDetection: document.getElementById('test-detection'),
+                drawTest: document.getElementById('draw-test'),
+                toggleDetection: document.getElementById('toggle-detection')
+            }
+        };
+        
+        // Global state
+        const state = {
+            tensorflowLoaded: false,
+            mediapipeLoaded: false,
+            cameraRunning: false,
+            detectorInitialized: false,
+            detector: null,
+            detectingContinuously: false,
+            detectionLoop: null,
+            ctx: null
+        };
+        
+        // Logging function
+        function logMessage(message, type = 'info') {
+            console.log(message);
+            const entry = document.createElement('div');
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            
+            if (type === 'error') entry.className = 'error';
+            if (type === 'success') entry.className = 'success';
+            if (type === 'warning') entry.className = 'warning';
+            
+            elements.console.appendChild(entry);
+            elements.console.scrollTop = elements.console.scrollHeight;
+        }
+        
+        // Update status
+        function updateStatus(message) {
+            elements.status.textContent = `Status: ${message}`;
+        }
+        
+        // Load TensorFlow.js
+        elements.buttons.loadTF.addEventListener('click', async () => {
+            try {
+                logMessage('Loading TensorFlow.js...');
+                updateStatus('Loading TensorFlow.js...');
+                
+                // Create script element for TensorFlow.js Core
+                const scriptCore = document.createElement('script');
+                scriptCore.src = 'https://unpkg.com/@tensorflow/tfjs-core@4.10.0/dist/tf-core.js';
+                
+                // Wait for TensorFlow.js Core to load
+                await new Promise((resolve, reject) => {
+                    scriptCore.onload = resolve;
+                    scriptCore.onerror = () => reject(new Error('Failed to load TensorFlow.js Core'));
+                    document.head.appendChild(scriptCore);
+                });
+                
+                logMessage('TensorFlow.js Core loaded', 'success');
+                
+                // Create script element for TensorFlow.js WebGL backend
+                const scriptWebGL = document.createElement('script');
+                scriptWebGL.src = 'https://unpkg.com/@tensorflow/tfjs-backend-webgl@4.10.0/dist/tf-backend-webgl.js';
+                
+                // Wait for TensorFlow.js WebGL backend to load
+                await new Promise((resolve, reject) => {
+                    scriptWebGL.onload = resolve;
+                    scriptWebGL.onerror = () => reject(new Error('Failed to load TensorFlow.js WebGL backend'));
+                    document.head.appendChild(scriptWebGL);
+                });
+                
+                logMessage('TensorFlow.js WebGL backend loaded', 'success');
+                
+                // Create script element for TensorFlow.js
+                const scriptTF = document.createElement('script');
+                scriptTF.src = 'https://unpkg.com/@tensorflow/tfjs@4.10.0/dist/tf.js';
+                
+                // Wait for TensorFlow.js to load
+                await new Promise((resolve, reject) => {
+                    scriptTF.onload = resolve;
+                    scriptTF.onerror = () => reject(new Error('Failed to load TensorFlow.js'));
+                    document.head.appendChild(scriptTF);
+                });
+                
+                logMessage('TensorFlow.js fully loaded', 'success');
+                
+                // Wait for TensorFlow to initialize
+                if (window.tf) {
+                    await window.tf.ready();
+                    logMessage('TensorFlow.js is ready', 'success');
+                    logMessage(`TensorFlow.js version: ${window.tf.version.tfjs}`);
+                    logMessage(`Backend: ${window.tf.getBackend()}`);
+                    
+                    state.tensorflowLoaded = true;
+                    elements.buttons.loadMediaPipe.disabled = false;
+                    updateStatus('TensorFlow.js loaded successfully');
+                } else {
+                    throw new Error('TensorFlow.js not available after loading');
+                }
+            } catch (error) {
+                logMessage(`Error loading TensorFlow.js: ${error.message}`, 'error');
+                updateStatus('Error loading TensorFlow.js');
+            }
+        });
+        
+        // Load MediaPipe Hands
+        elements.buttons.loadMediaPipe.addEventListener('click', async () => {
+            try {
+                logMessage('Loading MediaPipe Hands...');
+                updateStatus('Loading MediaPipe Hands...');
+                
+                // Create script element for MediaPipe Hands
+                const scriptMP = document.createElement('script');
+                scriptMP.src = 'https://unpkg.com/@mediapipe/hands@0.4.1646424915/hands.js';
+                
+                // Wait for MediaPipe Hands to load
+                await new Promise((resolve, reject) => {
+                    scriptMP.onload = resolve;
+                    scriptMP.onerror = () => reject(new Error('Failed to load MediaPipe Hands'));
+                    document.head.appendChild(scriptMP);
+                });
+                
+                logMessage('MediaPipe Hands loaded', 'success');
+                
+                // Create script element for Hand Pose Detection model
+                const scriptHPD = document.createElement('script');
+                scriptHPD.src = 'https://unpkg.com/@tensorflow-models/hand-pose-detection@2.0.0/dist/hand-pose-detection.js';
+                
+                // Wait for Hand Pose Detection model to load
+                await new Promise((resolve, reject) => {
+                    scriptHPD.onload = resolve;
+                    scriptHPD.onerror = () => reject(new Error('Failed to load Hand Pose Detection model'));
+                    document.head.appendChild(scriptHPD);
+                });
+                
+                logMessage('Hand Pose Detection model loaded', 'success');
+                
+                // Check if libraries are actually available
+                if (window.handPoseDetection) {
+                    logMessage('HandPoseDetection is available', 'success');
+                    logMessage(`Available models: ${Object.keys(window.handPoseDetection.SupportedModels).join(', ')}`);
+                    
+                    state.mediapipeLoaded = true;
+                    elements.buttons.startCamera.disabled = false;
+                    updateStatus('MediaPipe libraries loaded successfully');
+                } else {
+                    throw new Error('HandPoseDetection not available after loading');
+                }
+            } catch (error) {
+                logMessage(`Error loading MediaPipe: ${error.message}`, 'error');
+                updateStatus('Error loading MediaPipe');
+            }
+        });
+        
+        // Start camera
+        elements.buttons.startCamera.addEventListener('click', async () => {
+            try {
+                logMessage('Starting camera...');
+                updateStatus('Starting camera...');
+                
+                // Initialize canvas
+                state.ctx = elements.overlay.getContext('2d');
+                
+                if (!state.ctx) {
+                    throw new Error('Could not get canvas context');
+                }
+                
+                // Request camera access
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 640, height: 480 }
+                });
+                
+                // Set video source
+                elements.webcam.srcObject = stream;
+                
+                // Wait for video to be ready
+                await new Promise((resolve) => {
+                    elements.webcam.onloadedmetadata = () => {
+                        elements.webcam.play().then(resolve);
+                    };
+                });
+                
+                logMessage('Camera started successfully', 'success');
+                
+                // Set canvas dimensions to match video
+                elements.overlay.width = elements.webcam.videoWidth;
+                elements.overlay.height = elements.webcam.videoHeight;
+                
+                logMessage(`Canvas dimensions set to: ${elements.overlay.width}x${elements.overlay.height}`);
+                
+                // Draw test pattern on canvas
+                state.ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+                state.ctx.fillRect(0, 0, elements.overlay.width, elements.overlay.height);
+                state.ctx.font = '24px Arial';
+                state.ctx.fillStyle = 'white';
+                state.ctx.textAlign = 'center';
+                state.ctx.fillText('Camera Active', elements.overlay.width/2, elements.overlay.height/2);
+                
+                state.cameraRunning = true;
+                elements.buttons.initDetector.disabled = false;
+                updateStatus('Camera running');
+            } catch (error) {
+                logMessage(`Error starting camera: ${error.message}`, 'error');
+                updateStatus('Error starting camera');
+            }
+        });
+        
+        // Initialize hand detector
+        elements.buttons.initDetector.addEventListener('click', async () => {
+            try {
+                logMessage('Initializing hand pose detector...');
+                updateStatus('Initializing detector...');
+                
+                // Configuration for the hand pose detector
+                const config = {
+                    runtime: 'mediapipe',
+                    modelType: 'lite',
+                    maxHands: 2,
+                    solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915',
+                };
+                
+                logMessage('Using configuration: ' + JSON.stringify(config));
+                
+                // Create detector with timeout
+                const detectorPromise = window.handPoseDetection.createDetector(
+                    window.handPoseDetection.SupportedModels.MediaPipeHands,
+                    config
+                );
+                
+                // Add a timeout of 10 seconds
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('Detector initialization timed out')), 10000);
+                });
+                
+                // Race the promises
+                state.detector = await Promise.race([detectorPromise, timeoutPromise]);
+                
+                if (state.detector) {
+                    logMessage('Hand pose detector initialized successfully', 'success');
+                    state.detectorInitialized = true;
+                    elements.buttons.testDetection.disabled = false;
+                    elements.buttons.drawTest.disabled = false;
+                    updateStatus('Detector initialized');
+                } else {
+                    throw new Error('Detector was not created properly');
+                }
+            } catch (error) {
+                logMessage(`Error initializing detector: ${error.message}`, 'error');
+                updateStatus('Error initializing detector');
+                
+                // Try fallback configuration
+                try {
+                    logMessage('Trying fallback configuration...', 'warning');
+                    
+                    const fallbackConfig = {
+                        runtime: 'tfjs',
+                        modelType: 'lite',
+                        maxHands: 2
+                    };
+                    
+                    logMessage('Using fallback configuration: ' + JSON.stringify(fallbackConfig));
+                    
+                    state.detector = await window.handPoseDetection.createDetector(
+                        window.handPoseDetection.SupportedModels.MediaPipeHands,
+                        fallbackConfig
+                    );
+                    
+                    if (state.detector) {
+                        logMessage('Hand pose detector initialized with fallback configuration', 'success');
+                        state.detectorInitialized = true;
+                        elements.buttons.testDetection.disabled = false;
+                        elements.buttons.drawTest.disabled = false;
+                        updateStatus('Detector initialized (fallback)');
+                    } else {
+                        throw new Error('Fallback detector was not created properly');
+                    }
+                } catch (fallbackError) {
+                    logMessage(`Fallback initialization also failed: ${fallbackError.message}`, 'error');
+                }
+            }
+        });
+        
+        // Test detection
+        elements.buttons.testDetection.addEventListener('click', async () => {
+            try {
+                logMessage('Testing hand detection...');
+                updateStatus('Testing detection...');
+                
+                if (!state.detector) {
+                    throw new Error('Detector not initialized');
+                }
+                
+                // Detect hands
+                const hands = await state.detector.estimateHands(elements.webcam);
+                
+                logMessage(`Detected ${hands.length} hands`, 'success');
+                
+                if (hands.length > 0) {
+                    hands.forEach((hand, index) => {
+                        logMessage(`Hand ${index + 1}: ${hand.handedness} (confidence: ${Math.round(hand.score * 100)}%)`);
+                        logMessage(`Hand ${index + 1} has ${hand.keypoints.length} keypoints`);
+                    });
+                    
+                    // Draw hands
+                    drawHands(hands);
+                    
+                    elements.buttons.toggleDetection.disabled = false;
+                } else {
+                    logMessage('No hands detected. Try positioning your hands in view of the camera.', 'warning');
+                }
+                
+                updateStatus('Detection test complete');
+            } catch (error) {
+                logMessage(`Error testing detection: ${error.message}`, 'error');
+                updateStatus('Error testing detection');
+            }
+        });
+        
+        // Test canvas drawing
+        elements.buttons.drawTest.addEventListener('click', () => {
+            try {
+                logMessage('Testing canvas drawing...');
+                updateStatus('Testing canvas drawing...');
+                
+                if (!state.ctx) {
+                    throw new Error('Canvas context not initialized');
+                }
+                
+                // Clear canvas
+                state.ctx.clearRect(0, 0, elements.overlay.width, elements.overlay.height);
+                
+                // Draw test pattern
+                // Crosshair
+                state.ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
+                state.ctx.lineWidth = 5;
+                state.ctx.beginPath();
+                state.ctx.moveTo(0, elements.overlay.height / 2);
+                state.ctx.lineTo(elements.overlay.width, elements.overlay.height / 2);
+                state.ctx.moveTo(elements.overlay.width / 2, 0);
+                state.ctx.lineTo(elements.overlay.width / 2, elements.overlay.height);
+                state.ctx.stroke();
+                
+                // Border
+                state.ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
+                state.ctx.lineWidth = 10;
+                state.ctx.strokeRect(0, 0, elements.overlay.width, elements.overlay.height);
+                
+                // Text
+                state.ctx.fillStyle = 'white';
+                state.ctx.font = '30px Arial';
+                state.ctx.textAlign = 'center';
+                state.ctx.fillText('Canvas Drawing Test', elements.overlay.width / 2, elements.overlay.height / 2 - 50);
+                
+                // Timestamp
+                const now = new Date();
+                state.ctx.fillStyle = 'yellow';
+                state.ctx.font = '20px Arial';
+                state.ctx.fillText(now.toLocaleTimeString(), elements.overlay.width / 2, elements.overlay.height / 2 + 50);
+                
+                logMessage('Canvas drawing test completed', 'success');
+                updateStatus('Canvas drawing test complete');
+            } catch (error) {
+                logMessage(`Error in canvas drawing test: ${error.message}`, 'error');
+                updateStatus('Error in canvas drawing test');
+            }
+        });
+        
+        // Toggle continuous detection
+        elements.buttons.toggleDetection.addEventListener('click', () => {
+            if (state.detectingContinuously) {
+                // Stop continuous detection
+                if (state.detectionLoop) {
+                    cancelAnimationFrame(state.detectionLoop);
+                    state.detectionLoop = null;
+                }
+                
+                state.detectingContinuously = false;
+                elements.buttons.toggleDetection.textContent = '7. Start Continuous Detection';
+                logMessage('Continuous detection stopped', 'warning');
+                updateStatus('Continuous detection stopped');
+            } else {
+                // Start continuous detection
+                state.detectingContinuously = true;
+                elements.buttons.toggleDetection.textContent = '7. Stop Continuous Detection';
+                logMessage('Starting continuous detection...', 'success');
+                updateStatus('Continuous detection active');
+                
+                // Start detection loop
+                detectContinuously();
+            }
+        });
+        
+        // Continuous detection function
+        async function detectContinuously() {
+            if (!state.detectingContinuously) return;
+            
+            try {
+                // Detect hands
+                const hands = await state.detector.estimateHands(elements.webcam);
+                
+                // Clear canvas
+                state.ctx.clearRect(0, 0, elements.overlay.width, elements.overlay.height);
+                
+                // Draw timestamp
+                const now = new Date();
+                state.ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                state.ctx.font = '16px Arial';
+                state.ctx.textAlign = 'left';
+                state.ctx.fillText(now.toLocaleTimeString(), 10, 20);
+                
+                // Draw detection count
+                state.ctx.fillText(`Detected: ${hands.length} hands`, 10, 40);
+                
+                // Draw hands if detected
+                if (hands.length > 0) {
+                    drawHands(hands);
+                }
+                
+                // Continue detection loop
+                state.detectionLoop = requestAnimationFrame(detectContinuously);
+            } catch (error) {
+                logMessage(`Error in continuous detection: ${error.message}`, 'error');
+                state.detectingContinuously = false;
+                elements.buttons.toggleDetection.textContent = '7. Start Continuous Detection';
+                updateStatus('Error in continuous detection');
+            }
+        }
+        
+        // Draw hands function
+        function drawHands(hands) {
+            hands.forEach(hand => {
+                const keypoints = hand.keypoints;
+                const handedness = hand.handedness.toLowerCase();
+                
+                // Draw dots for each keypoint
+                keypoints.forEach((keypoint, index) => {
+                    const { x, y } = keypoint;
+                    
+                    // Skip drawing if coordinates are invalid
+                    if (isNaN(x) || isNaN(y)) return;
+                    
+                    // Choose color based on hand
+                    state.ctx.fillStyle = handedness === 'left' ? 'rgba(0, 255, 0, 0.8)' : 'rgba(0, 0, 255, 0.8)';
+                    
+                    // Draw larger circle for wrist (keypoint 0)
+                    const radius = index === 0 ? 8 : 5;
+                    
+                    // Draw dot
+                    state.ctx.beginPath();
+                    state.ctx.arc(x, y, radius, 0, 2 * Math.PI);
+                    state.ctx.fill();
+                    
+                    // Draw keypoint index for debugging
+                    state.ctx.fillStyle = 'white';
+                    state.ctx.font = '10px Arial';
+                    state.ctx.textAlign = 'center';
+                    state.ctx.fillText(index.toString(), x, y - 8);
+                });
+                
+                // Draw connections between keypoints
+                if (keypoints.length >= 21) {
+                    state.ctx.strokeStyle = handedness === 'left' ? 'rgba(0, 255, 0, 0.5)' : 'rgba(0, 0, 255, 0.5)';
+                    state.ctx.lineWidth = 3;
+                    
+                    // Define connections for hand skeleton (pairs of indices)
+                    const connections = [
+                        // Thumb
+                        [0, 1], [1, 2], [2, 3], [3, 4],
+                        // Index finger
+                        [0, 5], [5, 6], [6, 7], [7, 8],
+                        // Middle finger
+                        [0, 9], [9, 10], [10, 11], [11, 12],
+                        // Ring finger
+                        [0, 13], [13, 14], [14, 15], [15, 16],
+                        // Pinky
+                        [0, 17], [17, 18], [18, 19], [19, 20],
+                        // Palm connections
+                        [0, 5], [5, 9], [9, 13], [13, 17]
+                    ];
+                    
+                    connections.forEach(([i, j]) => {
+                        const start = keypoints[i];
+                        const end = keypoints[j];
+                        
+                        if (start && end && 
+                            !isNaN(start.x) && !isNaN(start.y) && 
+                            !isNaN(end.x) && !isNaN(end.y)) {
+                            state.ctx.beginPath();
+                            state.ctx.moveTo(start.x, start.y);
+                            state.ctx.lineTo(end.x, end.y);
+                            state.ctx.stroke();
+                        }
+                    });
+                }
+                
+                // Label hand
+                state.ctx.fillStyle = 'white';
+                state.ctx.font = '16px Arial';
+                state.ctx.textAlign = 'center';
+                state.ctx.fillText(
+                    handedness.toUpperCase(),
+                    keypoints[0].x,
+                    keypoints[0].y - 20
+                );
+            });
+        }
+        
+        // Initialize the page
+        logMessage('Page loaded. Click "1. Load TensorFlow" to begin.');
+        updateStatus('Ready to begin');
+    </script>
+</body>
+</html> 

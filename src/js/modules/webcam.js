@@ -64,6 +64,23 @@ export class WebcamHandler {
     }
     
     /**
+     * Get video devices - wrapper for enumerateDevices for compatibility with test page
+     */
+    async getVideoDevices() {
+        return await this.enumerateDevices();
+    }
+    
+    /**
+     * Start camera with optional device ID - wrapper for setup for compatibility with test page
+     */
+    async startCamera(deviceId = null) {
+        if (deviceId) {
+            this.selectedCameraId = deviceId;
+        }
+        return await this.setup();
+    }
+    
+    /**
      * Check if the browser supports getUserMedia API
      */
     checkBrowserCompatibility() {

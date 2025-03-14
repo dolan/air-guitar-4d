@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Basic Test - Air Guitar 4D</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #222;
+            color: #fff;
+            margin: 0;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: #00bcd4;
+        }
+        
+        #status {
+            margin: 20px 0;
+            padding: 10px;
+            background-color: #333;
+            border-radius: 5px;
+        }
+        
+        #test-canvas {
+            border: 3px solid red;
+            background-color: rgba(0, 0, 0, 0.5);
+            margin: 20px 0;
+        }
+        
+        button {
+            background-color: #00bcd4;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Basic JavaScript and Canvas Test</h1>
+        
+        <div id="status">Status: Loading...</div>
+        
+        <button id="test-js">Test JavaScript</button>
+        <button id="test-canvas-draw">Test Canvas Drawing</button>
+        <button id="test-module-loading">Test Module Loading</button>
+        
+        <canvas id="test-canvas" width="400" height="300"></canvas>
+        
+        <div id="log"></div>
+    </div>
+    
+    <script>
+        // Immediately log to console
+        console.log('SCRIPT LOADED: Direct script tag is executing');
+        document.getElementById('status').textContent = 'Status: Script tag loaded';
+        
+        // Add a function to append log messages
+        function log(message) {
+            console.log(message);
+            const logElement = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.textContent = message;
+            logElement.appendChild(entry);
+        }
+        
+        // Test basic JavaScript functionality
+        document.getElementById('test-js').addEventListener('click', function() {
+            log('JavaScript is working!');
+            document.getElementById('status').textContent = 'Status: JavaScript is working';
+        });
+        
+        // Test canvas drawing
+        document.getElementById('test-canvas-draw').addEventListener('click', function() {
+            const canvas = document.getElementById('test-canvas');
+            const ctx = canvas.getContext('2d');
+            
+            if (ctx) {
+                // Clear canvas
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // Draw a colorful pattern
+                ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+                ctx.fillRect(50, 50, 100, 100);
+                
+                ctx.fillStyle = 'rgba(0, 255, 0, 0.5)';
+                ctx.fillRect(100, 100, 100, 100);
+                
+                ctx.fillStyle = 'rgba(0, 0, 255, 0.5)';
+                ctx.fillRect(150, 150, 100, 100);
+                
+                ctx.font = '24px Arial';
+                ctx.fillStyle = 'white';
+                ctx.textAlign = 'center';
+                ctx.fillText('Canvas is working!', canvas.width/2, canvas.height/2);
+                
+                log('Canvas drawing test completed successfully');
+            } else {
+                log('ERROR: Could not get canvas context');
+            }
+        });
+        
+        // Test ES6 module loading
+        document.getElementById('test-module-loading').addEventListener('click', async function() {
+            try {
+                log('Attempting to load a module...');
+                
+                // Create a simple test module
+                const moduleBlob = new Blob([`
+                    export function testFunction() {
+                        return "Module loaded successfully!";
+                    }
+                `], { type: 'text/javascript' });
+                
+                const moduleURL = URL.createObjectURL(moduleBlob);
+                
+                // Try to import the module
+                const module = await import(moduleURL);
+                const result = module.testFunction();
+                
+                log(`Module test result: ${result}`);
+                document.getElementById('status').textContent = 'Status: ES6 Modules are working';
+            } catch (error) {
+                log(`ERROR loading module: ${error.message}`);
+                document.getElementById('status').textContent = 'Status: ES6 Module test failed';
+            }
+        });
+        
+        // Run basic tests automatically
+        window.onload = function() {
+            log('Window loaded');
+            
+            // Check if canvas works automatically
+            const canvas = document.getElementById('test-canvas');
+            const ctx = canvas.getContext('2d');
+            
+            if (ctx) {
+                ctx.fillStyle = 'white';
+                ctx.font = '20px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('Canvas initialized', canvas.width/2, canvas.height/2);
+                log('Canvas initialized automatically');
+            } else {
+                log('ERROR: Canvas initialization failed');
+            }
+        };
+    </script>
+</body>
+</html> 
