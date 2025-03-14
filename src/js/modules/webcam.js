@@ -22,6 +22,32 @@ export class WebcamHandler {
         // Canvas for preprocessing
         this.processingCanvas = document.createElement('canvas');
         this.processingContext = this.processingCanvas.getContext('2d');
+        
+        // Mirror settings
+        this.isMirrored = true;
+        this.applyMirrorSetting();
+    }
+    
+    /**
+     * Apply the current mirror setting to the video element
+     */
+    applyMirrorSetting() {
+        this.videoElement.style.transform = this.isMirrored ? 'scaleX(-1)' : 'scaleX(1)';
+        
+        // Find and update the overlay canvas if it exists
+        const overlay = document.getElementById('overlay');
+        if (overlay) {
+            overlay.style.transform = this.isMirrored ? 'scaleX(-1)' : 'scaleX(1)';
+        }
+    }
+    
+    /**
+     * Toggle the mirror setting
+     * @param {boolean} isMirrored - Whether the video should be mirrored
+     */
+    setMirrored(isMirrored) {
+        this.isMirrored = isMirrored;
+        this.applyMirrorSetting();
     }
     
     /**
@@ -152,12 +178,28 @@ export class WebcamHandler {
         }
         
         // Draw the current video frame to the processing canvas
-        this.processingContext.drawImage(
-            this.videoElement,
-            0, 0,
-            this.processingCanvas.width,
-            this.processingCanvas.height
-        );
+        // If mirrored in UI, we need to adjust how we draw to the processing canvas
+        // to ensure the data is consistent for the model
+        if (this.isMirrored) {
+            // Flip the canvas horizontally before drawing
+            this.processingContext.save();
+            this.processingContext.scale(-1, 1);
+            this.processingContext.drawImage(
+                this.videoElement,
+                -this.processingCanvas.width, 0, // Negative width to flip
+                this.processingCanvas.width,
+                this.processingCanvas.height
+            );
+            this.processingContext.restore();
+        } else {
+            // Draw normally without flipping
+            this.processingContext.drawImage(
+                this.videoElement,
+                0, 0,
+                this.processingCanvas.width,
+                this.processingCanvas.height
+            );
+        }
         
         // Get the image data - this can be further processed based on AI model requirements
         const imageData = this.processingContext.getImageData(

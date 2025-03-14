@@ -21,7 +21,10 @@ class AirGuitarApp {
             guitarType: document.getElementById('guitar-type'),
             startCameraBtn: document.getElementById('start-camera'),
             cameraSelect: document.getElementById('camera-select'),
-            cameraStatus: document.getElementById('camera-status')
+            cameraStatus: document.getElementById('camera-status'),
+            mirrorToggle: document.getElementById('mirror-toggle'),
+            planeAngleSlider: document.getElementById('plane-angle-slider'),
+            planeAngleValue: document.getElementById('plane-angle-value')
         };
         
         // Will be initialized in setup()
@@ -210,45 +213,58 @@ class AirGuitarApp {
     }
     
     /**
-     * Set up event listeners
+     * Set up event listeners for all interactive elements
      */
     setupEventListeners() {
-        // Start/Stop camera button
+        // Start camera button
         this.elements.startCameraBtn.addEventListener('click', () => {
-            if (this.webcamHandler.isActive) {
-                this.stopCamera();
-            } else {
-                this.startCamera();
-            }
+            this.startCamera();
         });
         
-        // Camera selection dropdown
-        this.elements.cameraSelect.addEventListener('change', async (event) => {
-            const selectedDeviceId = event.target.value;
-            if (selectedDeviceId && selectedDeviceId !== this.webcamHandler.selectedCameraId) {
-                // If camera is already active, restart it with the new device
-                const wasActive = this.webcamHandler.isActive;
-                
-                if (wasActive) {
-                    this.stopCamera();
-                }
-                
-                // Set the new camera
-                this.webcamHandler.selectedCameraId = selectedDeviceId;
-                
-                if (wasActive) {
-                    // Restart camera with new device
-                    await this.startCamera();
-                }
+        // Camera select dropdown
+        this.elements.cameraSelect.addEventListener('change', (event) => {
+            if (event.target.value) {
+                this.webcamHandler.switchCamera(event.target.value);
+                this.handTracking.resizeCanvas();
             }
         });
         
         // Guitar type selection
         this.elements.guitarType.addEventListener('change', (event) => {
-            const selectedGuitar = event.target.value;
-            console.log(`Guitar type changed to: ${selectedGuitar}`);
             if (this.soundEngine) {
-                this.soundEngine.setGuitarType(selectedGuitar);
+                this.soundEngine.setGuitarType(event.target.value);
+            }
+        });
+        
+        // Mirror toggle
+        this.elements.mirrorToggle.addEventListener('change', (event) => {
+            if (this.webcamHandler) {
+                this.webcamHandler.setMirrored(event.target.checked);
+                
+                // Update processing options for hand tracking
+                if (this.handTracking) {
+                    this.handTracking.setMirrored(event.target.checked);
+                }
+                
+                console.debug(`Mirror view ${event.target.checked ? 'enabled' : 'disabled'}`);
+            }
+        });
+        
+        // Guitar plane angle slider
+        this.elements.planeAngleSlider.addEventListener('input', (event) => {
+            const angle = parseInt(event.target.value, 10);
+            if (this.handTracking) {
+                this.handTracking.setGuitarPlaneAngle(angle);
+            }
+            
+            // Update the displayed value
+            this.elements.planeAngleValue.textContent = `${angle}°`;
+        });
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            if (this.handTracking) {
+                this.handTracking.resizeCanvas();
             }
         });
     }

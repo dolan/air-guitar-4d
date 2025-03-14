@@ -43,9 +43,31 @@ export class HandTracking {
             flipHorizontal: true  // Mirror image for more intuitive interaction
         };
         
+        // Guitar plane angle adjustment (in degrees)
+        this.guitarPlaneAngle = 0;
+        
         // Initialize TensorFlow.js when constructed
         this.tfReady = false;
         this._initTensorFlow();
+    }
+    
+    /**
+     * Set the guitar plane angle
+     * @param {number} angle - Angle in degrees to adjust the guitar plane (-10 to 10)
+     */
+    setGuitarPlaneAngle(angle) {
+        // Clamp angle to valid range
+        this.guitarPlaneAngle = Math.max(-10, Math.min(10, angle));
+        console.debug(`Guitar plane angle set to ${this.guitarPlaneAngle}°`);
+    }
+    
+    /**
+     * Convert angle from degrees to radians
+     * @param {number} degrees - Angle in degrees
+     * @returns {number} Angle in radians
+     */
+    degreesToRadians(degrees) {
+        return degrees * (Math.PI / 180);
     }
     
     /**
@@ -268,6 +290,15 @@ export class HandTracking {
     }
     
     /**
+     * Set the mirrored state for drawing and calculations
+     * @param {boolean} isMirrored - Whether the view should be mirrored
+     */
+    setMirrored(isMirrored) {
+        this.processingOptions.flipHorizontal = isMirrored;
+        console.debug(`Hand tracking mirror mode ${isMirrored ? 'enabled' : 'disabled'}`);
+    }
+    
+    /**
      * Process a single video frame to detect and track hands
      * @returns {Object} Detected hand data
      */
@@ -328,9 +359,17 @@ export class HandTracking {
             
             // Process detected hands
             for (const hand of detectedHands) {
-                // Need to swap hands for detection since we're mirroring
+                // Swap hands based on mirroring setting
                 const modelHandedness = hand.handedness.toLowerCase();
-                const correctedHandedness = modelHandedness === 'left' ? 'right' : 'left';
+                let correctedHandedness;
+                
+                if (this.processingOptions.flipHorizontal) {
+                    // If mirrored, swap left/right as the user sees their hands mirrored
+                    correctedHandedness = modelHandedness === 'left' ? 'right' : 'left';
+                } else {
+                    // If not mirrored, use the model's handedness directly
+                    correctedHandedness = modelHandedness;
+                }
                 
                 // Store the hand with the corrected handedness
                 this.hands[correctedHandedness] = hand;
@@ -485,12 +524,6 @@ export class HandTracking {
         this.ctx.lineTo(canvas.width, canvas.height);
         this.ctx.stroke();
         
-        // Function to flip X coordinates (since we've mirrored the canvas with CSS)
-        const flipX = (x) => canvas.width - x;
-        
-        // Function to flip Y coordinates to fix upside-down hands
-        const flipY = (y) => canvas.height - y;
-        
         // Now draw the hands
         // Process both hands
         for (const handType of ['left', 'right']) {
@@ -502,9 +535,6 @@ export class HandTracking {
             
             console.debug(`Drawing ${handType} hand with ${hand.keypoints.length} keypoints`);
             
-            // No need to correct hand type display now as we've already swapped in processFrame
-            // Use the handType directly which is already correct for display
-            
             // Set colors based on hand type (using even brighter colors for debugging)
             const handColor = handType === 'left' ? 'rgba(0, 255, 0, 1.0)' : 'rgba(0, 0, 255, 1.0)';
             const connectionColor = handType === 'left' ? 'rgba(0, 255, 0, 1.0)' : 'rgba(0, 0, 255, 1.0)';
@@ -514,15 +544,20 @@ export class HandTracking {
                 const wrist = hand.keypoints[0];
                 this.ctx.fillStyle = 'white';
                 this.ctx.beginPath();
-                // Use the x coordinate directly since the canvas is already flipped with CSS
-                this.ctx.arc(wrist.x, flipY(wrist.y), 15, 0, 2 * Math.PI);
+                
+                // Coordinate adjustments based on flip setting are now handled in CSS
+                // The canvas transformation is already applied via CSS transform
+                const x = wrist.x;
+                const y = this.canvasElement.height - wrist.y; // Flip Y coordinate
+                
+                this.ctx.arc(x, y, 15, 0, 2 * Math.PI);
                 this.ctx.fill();
                 
                 // Draw keypoint label
                 this.ctx.fillStyle = 'black';
                 this.ctx.font = 'bold 14px Arial';
                 this.ctx.textAlign = 'center';
-                this.ctx.fillText(handType, wrist.x, flipY(wrist.y));
+                this.ctx.fillText(handType, x, y);
             }
             
             // Draw keypoints
@@ -535,18 +570,21 @@ export class HandTracking {
                     return;
                 }
                 
+                // The canvas transform handles horizontal flipping via CSS
+                // We only need to handle the Y flip here
+                const adjustedY = this.canvasElement.height - y;
+                
                 // Draw dot
                 this.ctx.fillStyle = handColor;
                 this.ctx.beginPath();
-                // Apply the flipY transformation to fix upside-down hands
-                this.ctx.arc(x, flipY(y), 8, 0, 2 * Math.PI);
+                this.ctx.arc(x, adjustedY, 8, 0, 2 * Math.PI);
                 this.ctx.fill();
                 
                 // Draw keypoint index for debugging
                 this.ctx.fillStyle = 'white';
                 this.ctx.font = '12px Arial';
                 this.ctx.textAlign = 'center';
-                this.ctx.fillText(index.toString(), x, flipY(y) + 5);
+                this.ctx.fillText(index.toString(), x, adjustedY + 5);
             });
             
             // Draw connections between keypoints (simplified hand skeleton)
@@ -578,17 +616,19 @@ export class HandTracking {
                     if (startPoint && endPoint && 
                         !isNaN(startPoint.x) && !isNaN(startPoint.y) && 
                         !isNaN(endPoint.x) && !isNaN(endPoint.y)) {
+                        
+                        // Apply the Y-flip but let CSS handle X-flip
+                        const startY = this.canvasElement.height - startPoint.y;
+                        const endY = this.canvasElement.height - endPoint.y;
+                        
                         this.ctx.beginPath();
-                        // Apply the flipY transformation to fix upside-down hands
-                        this.ctx.moveTo(startPoint.x, flipY(startPoint.y));
-                        this.ctx.lineTo(endPoint.x, flipY(endPoint.y));
+                        this.ctx.moveTo(startPoint.x, startY);
+                        this.ctx.lineTo(endPoint.x, endY);
                         this.ctx.stroke();
                     }
                 });
             }
         }
-        
-        // Don't call drawDebugInfo here to avoid circular calls
     }
     
     /**
@@ -596,10 +636,10 @@ export class HandTracking {
      * @returns {Object|null} Information about the strumming motion if detected
      */
     detectStrummingMotion() {
-        // Since we've swapped hands in processFrame, we need to look at left hand for strumming
-        // (This would be the user's physical right hand because of the mirror effect)
-        const strummingHand = this.hands.left;
-        const prevStrummingHand = this.lastFrameHands.left;
+        // Determine which hand to use for strumming based on mirror setting
+        const strummingHandType = this.processingOptions.flipHorizontal ? 'left' : 'right';
+        const strummingHand = this.hands[strummingHandType];
+        const prevStrummingHand = this.lastFrameHands[strummingHandType];
         
         if (!strummingHand || !prevStrummingHand) return null;
         
@@ -629,9 +669,9 @@ export class HandTracking {
      * @returns {Object|null} Information about the detected chord
      */
     detectChordFormation() {
-        // Since we've swapped hands in processFrame, we need to look at right hand for chord formation
-        // (This would be the user's physical left hand because of the mirror effect)
-        const chordHand = this.hands.right;
+        // Determine which hand to use for chord formation based on mirror setting
+        const chordHandType = this.processingOptions.flipHorizontal ? 'right' : 'left';
+        const chordHand = this.hands[chordHandType];
         
         if (!chordHand) return null;
         
@@ -667,12 +707,30 @@ export class HandTracking {
     }
     
     /**
-     * Calculate Euclidean distance between two points
+     * Calculate the distance between two 3D points with plane angle adjustment
      */
     calculateDistance(point1, point2) {
+        if (!point1 || !point2) return 0;
+        
+        // Apply angle adjustment to y-coordinate
+        // For a positive angle, we lower the effective y position of points higher up
+        // (smaller y values) and raise the effective position of points lower down
+        const angleRadians = this.degreesToRadians(this.guitarPlaneAngle);
+        
+        // Create copies of points to avoid modifying originals
+        const p1 = { x: point1.x, y: point1.y, z: point1.z || 0 };
+        const p2 = { x: point2.x, y: point2.y, z: point2.z || 0 };
+        
+        // Adjust y coordinates based on x position and angle
+        // This simulates rotating the plane around the z-axis
+        p1.y += p1.x * Math.tan(angleRadians);
+        p2.y += p2.x * Math.tan(angleRadians);
+        
+        // Calculate Euclidean distance
         return Math.sqrt(
-            Math.pow(point1.x - point2.x, 2) + 
-            Math.pow(point1.y - point2.y, 2)
+            Math.pow(p2.x - p1.x, 2) +
+            Math.pow(p2.y - p1.y, 2) +
+            Math.pow(p2.z - p1.z, 2)
         );
     }
     
@@ -697,41 +755,72 @@ export class HandTracking {
     }
     
     /**
-     * Calculate orientation for a single hand
+     * Calculate hand orientation with angle adjustment
      */
     calculateHandOrientation(hand) {
-        const landmarks = hand.keypoints;
+        if (!hand || !hand.keypoints3D) return { pitch: 0, roll: 0, yaw: 0 };
+        
+        const landmarks = hand.keypoints3D;
+        
+        // Get key points
         const wrist = landmarks[FINGER_LANDMARKS.WRIST];
-        const middleFinger = landmarks[FINGER_LANDMARKS.MIDDLE.TIP];
+        const indexBase = landmarks[FINGER_LANDMARKS.INDEX.BASE];
+        const pinkyBase = landmarks[FINGER_LANDMARKS.PINKY.BASE];
         
-        // Calculate angle (in degrees)
-        const angle = Math.atan2(
-            middleFinger.y - wrist.y,
-            middleFinger.x - wrist.x
-        ) * (180 / Math.PI);
+        if (!wrist || !indexBase || !pinkyBase) return { pitch: 0, roll: 0, yaw: 0 };
         
-        // Determine if palm is facing camera based on relative finger positions
-        // This is a simplified approach - more sophisticated would use 3D hand model
-        const isPalmFacingCamera = this.estimatePalmDirection(landmarks);
+        // Apply angle adjustment to y-coordinates
+        const angleRadians = this.degreesToRadians(this.guitarPlaneAngle);
+        const adjustedWrist = { ...wrist };
+        const adjustedIndexBase = { ...indexBase };
+        const adjustedPinkyBase = { ...pinkyBase };
+        
+        // Adjust y values based on x position and plane angle
+        adjustedWrist.y += adjustedWrist.x * Math.tan(angleRadians);
+        adjustedIndexBase.y += adjustedIndexBase.x * Math.tan(angleRadians);
+        adjustedPinkyBase.y += adjustedPinkyBase.x * Math.tan(angleRadians);
+        
+        // Calculate vectors
+        const wristToIndex = {
+            x: adjustedIndexBase.x - adjustedWrist.x,
+            y: adjustedIndexBase.y - adjustedWrist.y,
+            z: adjustedIndexBase.z - adjustedWrist.z
+        };
+        
+        const wristToPinky = {
+            x: adjustedPinkyBase.x - adjustedWrist.x,
+            y: adjustedPinkyBase.y - adjustedWrist.y,
+            z: adjustedPinkyBase.z - adjustedWrist.z
+        };
+        
+        // Calculate normal vector to the palm plane
+        const normal = {
+            x: wristToIndex.y * wristToPinky.z - wristToIndex.z * wristToPinky.y,
+            y: wristToIndex.z * wristToPinky.x - wristToIndex.x * wristToPinky.z,
+            z: wristToIndex.x * wristToPinky.y - wristToIndex.y * wristToPinky.x
+        };
+        
+        // Normalize normal vector
+        const magnitude = Math.sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
+        const normalizedNormal = {
+            x: normal.x / magnitude,
+            y: normal.y / magnitude,
+            z: normal.z / magnitude
+        };
+        
+        // Calculate Euler angles from normalized normal
+        // Pitch: rotation around x-axis
+        const pitch = Math.atan2(normalizedNormal.y, normalizedNormal.z);
+        // Roll: rotation around y-axis
+        const roll = Math.atan2(-normalizedNormal.x, Math.sqrt(normalizedNormal.y * normalizedNormal.y + normalizedNormal.z * normalizedNormal.z));
+        // Yaw: rotation around z-axis
+        const yaw = Math.atan2(wristToIndex.x, wristToIndex.y);
         
         return {
-            angle,
-            isPalmFacingCamera,
-            // Add more orientation data as needed
+            pitch: pitch * (180 / Math.PI), // Convert to degrees
+            roll: roll * (180 / Math.PI),
+            yaw: yaw * (180 / Math.PI)
         };
-    }
-    
-    /**
-     * Estimate if palm is facing the camera
-     * This is a simplified approach
-     */
-    estimatePalmDirection(landmarks) {
-        // This is a placeholder implementation
-        // A more accurate implementation would use 3D landmark information
-        // or relative positions of multiple landmarks
-        
-        // For now, return a random value for demonstration
-        return Math.random() > 0.5;
     }
 
     /**
