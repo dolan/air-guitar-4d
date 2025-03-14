@@ -28,7 +28,7 @@
     "tone": "^14.7.77"
   },
   "devDependencies": {
-    "eslint": "^8.42.0",
+    "eslint": "^9.00.0",
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-plugin-import": "^2.27.5",
     "serve": "^14.2.0"

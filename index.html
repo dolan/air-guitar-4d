@@ -16,13 +16,20 @@
             <div id="video-wrapper">
                 <video id="webcam" autoplay playsinline></video>
                 <canvas id="overlay"></canvas>
+                <div id="camera-status" class="status-message"></div>
+            </div>
+            <div id="camera-controls">
+                <button id="start-camera" class="primary-button">Start Camera</button>
+                <select id="camera-select" class="select-dropdown" disabled>
+                    <option value="">Loading cameras...</option>
+                </select>
             </div>
         </section>
         
         <section id="controls">
             <div id="tone-selection">
                 <h2>Guitar Tone</h2>
-                <select id="guitar-type">
+                <select id="guitar-type" class="select-dropdown">
                     <option value="acoustic">Acoustic</option>
                     <option value="electric">Electric</option>
                     <option value="bass">Bass</option>
