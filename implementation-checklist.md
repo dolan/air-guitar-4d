@@ -30,6 +30,7 @@ This checklist tracks the implementation progress of the Air Guitar Web Applicat
 - [x] Detect hand orientation and position
 - [x] Track strumming motion
 - [x] Create calibration process for hand tracking
+- [x] Implement guitar plane visualization and adjustment
 - [ ] Optimize model for performance
 - [ ] Handle tracking in different lighting conditions
 - [ ] Create unit tests for hand tracking module

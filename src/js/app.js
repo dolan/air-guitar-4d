@@ -62,6 +62,10 @@ class AirGuitarApp {
             // Display welcome message
             this.showWelcomeMessage();
             
+            // Make sure the angle display shows the default value
+            this.elements.planeAngleSlider.value = this.handTracking.guitarPlaneAngle;
+            this.elements.planeAngleValue.textContent = `${this.handTracking.guitarPlaneAngle}°`;
+            
             this.initialized = true;
             console.log('Air Guitar 4D initialized successfully!');
         } catch (error) {
@@ -259,6 +263,15 @@ class AirGuitarApp {
             
             // Update the displayed value
             this.elements.planeAngleValue.textContent = `${angle}°`;
+        });
+        
+        // Additional event for smooth transitions when slider is released
+        this.elements.planeAngleSlider.addEventListener('change', (event) => {
+            const finalAngle = parseInt(event.target.value, 10);
+            if (this.handTracking) {
+                // This will ensure the final angle is properly set and any animations complete
+                this.handTracking.setGuitarPlaneAngle(finalAngle);
+            }
         });
         
         // Handle window resize

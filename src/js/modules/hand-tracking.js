@@ -44,7 +44,7 @@ export class HandTracking {
         };
         
         // Guitar plane angle adjustment (in degrees)
-        this.guitarPlaneAngle = 0;
+        this.guitarPlaneAngle = 45; // Default to a natural guitar inclination
         
         // Initialize TensorFlow.js when constructed
         this.tfReady = false;
@@ -53,12 +53,63 @@ export class HandTracking {
     
     /**
      * Set the guitar plane angle
-     * @param {number} angle - Angle in degrees to adjust the guitar plane (-10 to 10)
+     * @param {number} angle - Angle in degrees to adjust the guitar plane (35-90)
      */
     setGuitarPlaneAngle(angle) {
+        // Store previous angle for animation
+        this.previousAngle = this.guitarPlaneAngle;
+        
         // Clamp angle to valid range
-        this.guitarPlaneAngle = Math.max(-10, Math.min(10, angle));
+        this.guitarPlaneAngle = Math.max(35, Math.min(90, angle));
         console.debug(`Guitar plane angle set to ${this.guitarPlaneAngle}°`);
+        
+        // Trigger angle change animation
+        this.animateAngleChange();
+    }
+    
+    /**
+     * Animate the transition between guitar plane angles
+     */
+    animateAngleChange() {
+        // If we already have an animation in progress, cancel it
+        if (this.angleAnimationId) {
+            cancelAnimationFrame(this.angleAnimationId);
+        }
+        
+        const startTime = performance.now();
+        const startAngle = this.previousAngle || 0;
+        const targetAngle = this.guitarPlaneAngle;
+        const animationDuration = 300; // ms
+        
+        // Only animate if there's a significant change
+        if (Math.abs(targetAngle - startAngle) < 0.1) {
+            return;
+        }
+        
+        // Store the actual angle separately from the displayed animated angle
+        this.displayedAngle = startAngle;
+        
+        const animateFrame = (timestamp) => {
+            const elapsed = timestamp - startTime;
+            const progress = Math.min(elapsed / animationDuration, 1);
+            
+            // Use an ease-out function for smooth animation
+            const easeOutProgress = 1 - Math.pow(1 - progress, 2);
+            
+            // Update the displayed angle
+            this.displayedAngle = startAngle + (targetAngle - startAngle) * easeOutProgress;
+            
+            // Continue animation if not complete
+            if (progress < 1) {
+                this.angleAnimationId = requestAnimationFrame(animateFrame);
+            } else {
+                this.displayedAngle = targetAngle;
+                this.angleAnimationId = null;
+            }
+        };
+        
+        // Start the animation
+        this.angleAnimationId = requestAnimationFrame(animateFrame);
     }
     
     /**
@@ -294,8 +345,36 @@ export class HandTracking {
      * @param {boolean} isMirrored - Whether the view should be mirrored
      */
     setMirrored(isMirrored) {
+        // Store the previous value to detect changes
+        const wasFlipped = this.processingOptions.flipHorizontal;
+        
+        // Update the mirroring setting
         this.processingOptions.flipHorizontal = isMirrored;
         console.debug(`Hand tracking mirror mode ${isMirrored ? 'enabled' : 'disabled'}`);
+        
+        // If the mirror setting has changed, we need to recalibrate detection zones
+        if (wasFlipped !== isMirrored && this.hands) {
+            // Clear current hand data to avoid using outdated positions during the transition
+            this.lastFrameHands = { left: null, right: null };
+            this.hands = { left: null, right: null };
+            
+            // Force a recalibration sequence on the next frame
+            this.recalibrateAfterMirrorChange = true;
+            console.debug('Mirror setting changed - detection zones will be recalibrated');
+            
+            // Display visual feedback to the user
+            if (this.ctx) {
+                const canvas = this.ctx.canvas;
+                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                this.ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                this.ctx.fillStyle = 'white';
+                this.ctx.font = 'bold 20px Arial';
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText('Mirror setting changed', canvas.width/2, canvas.height/2 - 30);
+                this.ctx.fillText('Recalibrating hand tracking...', canvas.width/2, canvas.height/2 + 10);
+            }
+        }
     }
     
     /**
@@ -329,6 +408,30 @@ export class HandTracking {
         }
         
         try {
+            // Check if we need to recalibrate after a mirror change
+            if (this.recalibrateAfterMirrorChange) {
+                console.debug('Recalibrating after mirror change');
+                this.recalibrateAfterMirrorChange = false;
+                
+                // We could perform specific recalibration steps here if needed
+                // For now, just clear previous hands data to avoid using outdated positions
+                this.lastFrameHands = { left: null, right: null };
+                this.hands = { left: null, right: null };
+                
+                // Show a recalibration message for one frame
+                if (this.ctx) {
+                    const canvas = this.ctx.canvas;
+                    this.ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                    this.ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    
+                    this.ctx.fillStyle = 'white';
+                    this.ctx.font = 'bold 24px Arial';
+                    this.ctx.textAlign = 'center';
+                    this.ctx.fillText('Recalibrated!', canvas.width/2, canvas.height/2);
+                }
+            }
+            
             // Draw a visual indicator that the frame processing is active
             this.drawDebugInfo();
             
@@ -407,6 +510,11 @@ export class HandTracking {
     drawDebugInfo() {
         // Clear the canvas
         this.ctx.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
+        
+        // Helper function to adjust X coordinate based on mirror setting
+        const adjustX = (x) => {
+            return this.processingOptions.flipHorizontal ? this.canvasElement.width - x : x;
+        };
         
         // Draw a border to show the canvas is active
         this.ctx.strokeStyle = 'rgba(0, 255, 0, 0.5)';
@@ -516,13 +624,13 @@ export class HandTracking {
         this.ctx.arc(canvas.width - 50, 50, flashingSize, 0, 2 * Math.PI);
         this.ctx.fill();
         
-        // Draw a diagonal line across the entire canvas
-        this.ctx.strokeStyle = 'yellow';
-        this.ctx.lineWidth = 5;
-        this.ctx.beginPath();
-        this.ctx.moveTo(0, 0);
-        this.ctx.lineTo(canvas.width, canvas.height);
-        this.ctx.stroke();
+        // Draw a line representing the guitar plane angle
+        this.drawGuitarPlaneIndicator(canvas);
+        
+        // Helper function to adjust X coordinate based on mirror setting
+        const adjustX = (x) => {
+            return this.processingOptions.flipHorizontal ? canvas.width - x : x;
+        };
         
         // Now draw the hands
         // Process both hands
@@ -545,10 +653,9 @@ export class HandTracking {
                 this.ctx.fillStyle = 'white';
                 this.ctx.beginPath();
                 
-                // Coordinate adjustments based on flip setting are now handled in CSS
-                // The canvas transformation is already applied via CSS transform
-                const x = wrist.x;
-                const y = this.canvasElement.height - wrist.y; // Flip Y coordinate
+                // Apply mirroring on X-coordinate if needed
+                const x = adjustX(wrist.x);
+                const y = wrist.y;
                 
                 this.ctx.arc(x, y, 15, 0, 2 * Math.PI);
                 this.ctx.fill();
@@ -570,21 +677,20 @@ export class HandTracking {
                     return;
                 }
                 
-                // The canvas transform handles horizontal flipping via CSS
-                // We only need to handle the Y flip here
-                const adjustedY = this.canvasElement.height - y;
+                // Apply mirroring on X-coordinate if needed
+                const adjustedX = adjustX(x);
                 
                 // Draw dot
                 this.ctx.fillStyle = handColor;
                 this.ctx.beginPath();
-                this.ctx.arc(x, adjustedY, 8, 0, 2 * Math.PI);
+                this.ctx.arc(adjustedX, y, 8, 0, 2 * Math.PI);
                 this.ctx.fill();
                 
                 // Draw keypoint index for debugging
                 this.ctx.fillStyle = 'white';
                 this.ctx.font = '12px Arial';
                 this.ctx.textAlign = 'center';
-                this.ctx.fillText(index.toString(), x, adjustedY + 5);
+                this.ctx.fillText(index.toString(), adjustedX, y + 5);
             });
             
             // Draw connections between keypoints (simplified hand skeleton)
@@ -617,18 +723,141 @@ export class HandTracking {
                         !isNaN(startPoint.x) && !isNaN(startPoint.y) && 
                         !isNaN(endPoint.x) && !isNaN(endPoint.y)) {
                         
-                        // Apply the Y-flip but let CSS handle X-flip
-                        const startY = this.canvasElement.height - startPoint.y;
-                        const endY = this.canvasElement.height - endPoint.y;
+                        // Apply mirroring on X-coordinates if needed
+                        const startX = adjustX(startPoint.x);
+                        const endX = adjustX(endPoint.x);
                         
                         this.ctx.beginPath();
-                        this.ctx.moveTo(startPoint.x, startY);
-                        this.ctx.lineTo(endPoint.x, endY);
+                        this.ctx.moveTo(startX, startPoint.y);
+                        this.ctx.lineTo(endX, endPoint.y);
                         this.ctx.stroke();
                     }
                 });
             }
         }
+    }
+    
+    /**
+     * Draw a visual indicator of the current guitar plane angle
+     * @param {HTMLCanvasElement} canvas - The canvas element to draw on
+     */
+    drawGuitarPlaneIndicator(canvas) {
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        const lineLength = Math.min(canvas.width, canvas.height) * 0.8;
+        
+        // Use the displayed angle for animation, or the actual angle if not animating
+        const displayAngle = this.displayedAngle !== undefined ? this.displayedAngle : this.guitarPlaneAngle;
+        
+        // Convert angle to radians for calculations
+        // Note: In our new range, 90° is vertical and 0° is horizontal
+        // So we need to convert from our UI angle to the internal angle system
+        const internalAngle = displayAngle - 90; // Convert to a system where 0° is horizontal
+        const angleRad = this.degreesToRadians(internalAngle);
+        
+        // Calculate line endpoints based on the angle
+        const fullAngleRad = angleRad;
+        
+        const dx = Math.cos(fullAngleRad) * lineLength / 2;
+        const dy = Math.sin(fullAngleRad) * lineLength / 2;
+        
+        const startX = centerX - dx;
+        const startY = centerY - dy; // No longer need to invert Y coordinate
+        const endX = centerX + dx;
+        const endY = centerY + dy; // No longer need to invert Y coordinate
+        
+        // Create a gradient for the line
+        const gradient = this.ctx.createLinearGradient(startX, startY, endX, endY);
+        gradient.addColorStop(0, 'rgba(255, 140, 0, 0.8)'); // Orange at start
+        gradient.addColorStop(0.5, 'rgba(255, 215, 0, 0.8)'); // Gold in the middle
+        gradient.addColorStop(1, 'rgba(255, 140, 0, 0.8)'); // Orange at end
+        
+        // Draw the main line representing the guitar plane
+        this.ctx.strokeStyle = gradient;
+        this.ctx.lineWidth = 6;
+        this.ctx.setLineDash([15, 5]); // Dashed line for better visibility
+        this.ctx.beginPath();
+        this.ctx.moveTo(startX, startY);
+        this.ctx.lineTo(endX, endY);
+        this.ctx.stroke();
+        this.ctx.setLineDash([]); // Reset to solid line
+        
+        // Draw angle indicator with current actual value (not animated value)
+        this.ctx.fillStyle = 'white';
+        this.ctx.font = 'bold 16px Arial';
+        this.ctx.textAlign = 'right';
+        this.ctx.fillText(`Guitar Plane: ${this.guitarPlaneAngle}°`, canvas.width - 20, canvas.height - 20);
+        
+        // Draw a guitar icon at the center
+        this.drawGuitarIcon(centerX, centerY, fullAngleRad);
+        
+        // Draw small perpendicular ticks to indicate direction
+        const tickLength = 20;
+        const perpAngleRad = fullAngleRad + Math.PI / 2; // 90 degrees perpendicular
+        const tickDx = Math.cos(perpAngleRad) * tickLength;
+        const tickDy = Math.sin(perpAngleRad) * tickLength;
+        
+        // Draw several ticks along the main line
+        const numTicks = 7;
+        const tickSpacing = lineLength / (numTicks - 1);
+        
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+        this.ctx.lineWidth = 2;
+        
+        for (let i = 0; i < numTicks; i++) {
+            const t = i / (numTicks - 1);
+            const tickX = startX + (endX - startX) * t;
+            const tickY = startY + (endY - startY) * t;
+            
+            this.ctx.beginPath();
+            this.ctx.moveTo(tickX, tickY);
+            this.ctx.lineTo(tickX + tickDx, tickY + tickDy);
+            this.ctx.stroke();
+        }
+    }
+    
+    /**
+     * Draw a simple guitar icon at the specified center point
+     * @param {number} x - Center X coordinate
+     * @param {number} y - Center Y coordinate
+     * @param {number} angleRad - Angle in radians for the guitar orientation
+     */
+    drawGuitarIcon(x, y, angleRad) {
+        const size = 40; // Size of the guitar icon
+        
+        // Save the current context state
+        this.ctx.save();
+        
+        // Translate to the center point
+        this.ctx.translate(x, y);
+        
+        // Rotate according to the guitar plane angle
+        this.ctx.rotate(angleRad - Math.PI/2); // Adjust the rotation to align with the line
+        
+        // Draw the guitar body (a rounded rectangle)
+        this.ctx.fillStyle = 'rgba(222, 184, 135, 0.8)'; // Burlywood color for guitar
+        this.ctx.beginPath();
+        this.ctx.ellipse(0, 0, size/2, size/1.2, 0, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Draw the guitar neck
+        this.ctx.fillStyle = 'rgba(139, 69, 19, 0.8)'; // Brown for neck
+        this.ctx.fillRect(-size/10, -size*1.2, size/5, size);
+        
+        // Draw the guitar strings
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+        this.ctx.lineWidth = 1;
+        
+        const stringSpacing = size/10;
+        for (let i = -2; i <= 2; i++) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(i * stringSpacing, -size*1.2);
+            this.ctx.lineTo(i * stringSpacing, size/1.2);
+            this.ctx.stroke();
+        }
+        
+        // Restore the context state
+        this.ctx.restore();
     }
     
     /**
@@ -654,6 +883,8 @@ export class HandTracking {
         const STRUM_THRESHOLD = 15; // Minimum pixels to consider as strumming
         
         if (Math.abs(yMovement) > STRUM_THRESHOLD) {
+            // Now that we've fixed the coordinate system, up/down directions are correct
+            // Positive Y movement means moving down on the screen, negative means moving up
             return {
                 direction: yMovement > 0 ? 'down' : 'up',
                 intensity: Math.abs(yMovement) / 50, // Normalize between 0-1 (approximate)
@@ -713,9 +944,9 @@ export class HandTracking {
         if (!point1 || !point2) return 0;
         
         // Apply angle adjustment to y-coordinate
-        // For a positive angle, we lower the effective y position of points higher up
-        // (smaller y values) and raise the effective position of points lower down
-        const angleRadians = this.degreesToRadians(this.guitarPlaneAngle);
+        // First convert from UI angle (where 90° is vertical) to internal angle (where 0° is horizontal)
+        const internalAngle = this.guitarPlaneAngle - 90;
+        const angleRadians = this.degreesToRadians(internalAngle);
         
         // Create copies of points to avoid modifying originals
         const p1 = { x: point1.x, y: point1.y, z: point1.z || 0 };
@@ -770,7 +1001,10 @@ export class HandTracking {
         if (!wrist || !indexBase || !pinkyBase) return { pitch: 0, roll: 0, yaw: 0 };
         
         // Apply angle adjustment to y-coordinates
-        const angleRadians = this.degreesToRadians(this.guitarPlaneAngle);
+        // Convert from UI angle to internal angle system
+        const internalAngle = this.guitarPlaneAngle - 90;
+        const angleRadians = this.degreesToRadians(internalAngle);
+        
         const adjustedWrist = { ...wrist };
         const adjustedIndexBase = { ...indexBase };
         const adjustedPinkyBase = { ...pinkyBase };
