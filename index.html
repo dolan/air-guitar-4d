@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Air Guitar 4D</title>
     <link rel="stylesheet" href="src/css/styles.css">
+    <!-- Load Tone.js for audio synthesis -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
     <!-- Load TensorFlow.js and MediaPipe libraries -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.min.js"></script>
@@ -21,9 +23,11 @@
                 <video id="webcam" autoplay playsinline></video>
                 <canvas id="overlay"></canvas>
                 <div id="camera-status" class="status-message"></div>
+                <div id="audio-status" class="status-message"></div>
             </div>
             <div id="camera-controls">
                 <button id="start-camera" class="primary-button">Start Camera</button>
+                <button id="enable-audio" class="primary-button audio-button">Enable Audio</button>
                 <select id="camera-select" class="select-dropdown" disabled>
                     <option value="">Loading cameras...</option>
                 </select>
@@ -60,7 +64,37 @@
             
             <div id="effects-control">
                 <h2>Effects</h2>
-                <!-- Effects controls will be added here -->
+                <div class="effect-slider">
+                    <label for="distortion-slider">Distortion:</label>
+                    <input type="range" min="0" max="100" value="0" class="range-slider" id="distortion-slider">
+                    <div class="slider-value">
+                        <span id="distortion-value">0%</span>
+                    </div>
+                </div>
+                
+                <div class="effect-slider">
+                    <label for="reverb-slider">Reverb:</label>
+                    <input type="range" min="0" max="100" value="20" class="range-slider" id="reverb-slider">
+                    <div class="slider-value">
+                        <span id="reverb-value">20%</span>
+                    </div>
+                </div>
+                
+                <div class="effect-slider">
+                    <label for="delay-slider">Delay:</label>
+                    <input type="range" min="0" max="100" value="0" class="range-slider" id="delay-slider">
+                    <div class="slider-value">
+                        <span id="delay-value">0%</span>
+                    </div>
+                </div>
+                
+                <div class="volume-slider">
+                    <label for="volume-slider">Volume:</label>
+                    <input type="range" min="0" max="100" value="80" class="range-slider" id="volume-slider">
+                    <div class="slider-value">
+                        <span id="volume-value">80%</span>
+                    </div>
+                </div>
             </div>
         </section>
     </main>

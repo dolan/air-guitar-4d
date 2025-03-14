@@ -79,6 +79,14 @@ main {
     z-index: 10;
 }
 
+#audio-status {
+    top: auto;
+    bottom: 1rem;
+    background-color: rgba(30, 30, 150, 0.7);
+    padding: 0.75rem;
+    font-size: 1rem;
+}
+
 /* Camera Controls */
 #camera-controls {
     display: flex;
@@ -104,13 +112,26 @@ main {
     transition: background-color 0.2s;
 }
 
-.primary-button:hover {
-    background-color: #81d4fa;
+.audio-button {
+    background-color: #7e57c2;
+    color: white;
+}
+
+.audio-button:hover {
+    background-color: #9575cd;
+}
+
+.audio-button.active {
+    background-color: #4caf50;
 }
 
 .primary-button:disabled {
     background-color: #607d8b;
     cursor: not-allowed;
+}
+
+.primary-button:hover {
+    background-color: #81d4fa;
 }
 
 .select-dropdown {

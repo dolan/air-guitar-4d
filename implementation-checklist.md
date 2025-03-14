@@ -31,8 +31,8 @@ This checklist tracks the implementation progress of the Air Guitar Web Applicat
 - [x] Track strumming motion
 - [x] Create calibration process for hand tracking
 - [x] Implement guitar plane visualization and adjustment
-- [ ] Optimize model for performance
-- [ ] Handle tracking in different lighting conditions
+- [x] Optimize model for performance
+- [x] Handle tracking in different lighting conditions
 - [ ] Create unit tests for hand tracking module
 
 ## 4. Motion Analysis
@@ -130,7 +130,7 @@ This checklist tracks the implementation progress of the Air Guitar Web Applicat
 ---
 
 ## Progress Tracker
-- Total Tasks: 37/78 complete (47%)
+- Total Tasks: 39/78 complete (50%)
 - Major Components: 3/13 complete (23%)
 
-*Last updated: March 14, 2023* 
+*Last updated: March 14, 2025* 

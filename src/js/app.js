@@ -20,11 +20,22 @@ class AirGuitarApp {
             overlay: document.getElementById('overlay'),
             guitarType: document.getElementById('guitar-type'),
             startCameraBtn: document.getElementById('start-camera'),
+            enableAudioBtn: document.getElementById('enable-audio'),
             cameraSelect: document.getElementById('camera-select'),
             cameraStatus: document.getElementById('camera-status'),
+            audioStatus: document.getElementById('audio-status'),
             mirrorToggle: document.getElementById('mirror-toggle'),
             planeAngleSlider: document.getElementById('plane-angle-slider'),
-            planeAngleValue: document.getElementById('plane-angle-value')
+            planeAngleValue: document.getElementById('plane-angle-value'),
+            // Effects controls
+            distortionSlider: document.getElementById('distortion-slider'),
+            reverbSlider: document.getElementById('reverb-slider'),
+            delaySlider: document.getElementById('delay-slider'),
+            volumeSlider: document.getElementById('volume-slider'),
+            distortionValue: document.getElementById('distortion-value'),
+            reverbValue: document.getElementById('reverb-value'),
+            delayValue: document.getElementById('delay-value'),
+            volumeValue: document.getElementById('volume-value')
         };
         
         // Will be initialized in setup()
@@ -55,6 +66,13 @@ class AirGuitarApp {
             
             // Setup event listeners
             this.setupEventListeners();
+            
+            // Note: Sound engine will be initialized on user interaction
+            
+            // Set up motion analysis callbacks
+            this.motionAnalysis.setStrumCallback((strumData) => {
+                this.soundEngine.playStrum(strumData);
+            });
             
             // Show camera options immediately if possible
             this.initCameraOptions();
@@ -125,6 +143,12 @@ class AirGuitarApp {
             this.elements.startCameraBtn.disabled = true;
             this.setCameraStatus('Accessing camera...');
             
+            // If the button text says "Stop Camera", we're turning off the camera
+            if (this.elements.startCameraBtn.textContent === 'Stop Camera') {
+                this.stopCamera();
+                return;
+            }
+
             const success = await this.webcamHandler.setup();
             
             if (success) {
@@ -203,10 +227,15 @@ class AirGuitarApp {
                 const orientations = this.handTracking.getHandOrientations();
                 
                 // Pass data to motion analysis
-                this.motionAnalysis.processHandData(handData, strummingMotion, chordData, orientations);
+                const motionResult = this.motionAnalysis.processHandData(handData, strummingMotion, chordData, orientations);
                 
                 // Update UI feedback
                 this.uiFeedback.updateHandPositionDisplay(handData, strummingMotion, chordData);
+                
+                // If motion analysis detected a strum, play it
+                if (motionResult && motionResult.strumDetected) {
+                    this.soundEngine.playStrum(motionResult);
+                }
             }
         } catch (error) {
             console.error("Error in frame processing:", error);
@@ -223,6 +252,11 @@ class AirGuitarApp {
         // Start camera button
         this.elements.startCameraBtn.addEventListener('click', () => {
             this.startCamera();
+        });
+        
+        // Enable audio button
+        this.elements.enableAudioBtn.addEventListener('click', () => {
+            this.enableAudio();
         });
         
         // Camera select dropdown
@@ -256,13 +290,11 @@ class AirGuitarApp {
         
         // Guitar plane angle slider
         this.elements.planeAngleSlider.addEventListener('input', (event) => {
-            const angle = parseInt(event.target.value, 10);
+            const angle = parseInt(event.target.value);
             if (this.handTracking) {
                 this.handTracking.setGuitarPlaneAngle(angle);
+                this.elements.planeAngleValue.textContent = `${angle}°`;
             }
-            
-            // Update the displayed value
-            this.elements.planeAngleValue.textContent = `${angle}°`;
         });
         
         // Additional event for smooth transitions when slider is released
@@ -280,6 +312,54 @@ class AirGuitarApp {
                 this.handTracking.resizeCanvas();
             }
         });
+        
+        // Effect sliders
+        const effectSliders = {
+            distortion: this.elements.distortionSlider,
+            reverb: this.elements.reverbSlider,
+            delay: this.elements.delaySlider,
+            volume: this.elements.volumeSlider
+        };
+        
+        const effectLabels = {
+            distortion: this.elements.distortionValue,
+            reverb: this.elements.reverbValue,
+            delay: this.elements.delayValue,
+            volume: this.elements.volumeValue
+        };
+        
+        // Set up event listeners for all effect sliders
+        if (effectSliders.distortion) {
+            effectSliders.distortion.addEventListener('input', (event) => {
+                const value = parseInt(event.target.value) / 100;
+                this.soundEngine.setEffectLevel('distortion', value);
+                effectLabels.distortion.textContent = `${event.target.value}%`;
+            });
+        }
+        
+        if (effectSliders.reverb) {
+            effectSliders.reverb.addEventListener('input', (event) => {
+                const value = parseInt(event.target.value) / 100;
+                this.soundEngine.setEffectLevel('reverb', value);
+                effectLabels.reverb.textContent = `${event.target.value}%`;
+            });
+        }
+        
+        if (effectSliders.delay) {
+            effectSliders.delay.addEventListener('input', (event) => {
+                const value = parseInt(event.target.value) / 100;
+                this.soundEngine.setEffectLevel('delay', value);
+                effectLabels.delay.textContent = `${event.target.value}%`;
+            });
+        }
+        
+        if (effectSliders.volume) {
+            effectSliders.volume.addEventListener('input', (event) => {
+                const value = parseInt(event.target.value) / 100;
+                this.soundEngine.setVolume(value);
+                effectLabels.volume.textContent = `${event.target.value}%`;
+            });
+        }
     }
     
     /**
@@ -303,8 +383,11 @@ class AirGuitarApp {
      * Display welcome message
      */
     showWelcomeMessage() {
-        // Display welcome message in camera status instead of alert
+        // Display welcome message in camera status
         this.setCameraStatus('Welcome to Air Guitar 4D! Start the camera to begin playing.');
+        
+        // Display audio initialization message
+        this.setAudioStatus('Click "Enable Audio" to activate sound after camera is working.');
     }
     
     /**
@@ -313,6 +396,62 @@ class AirGuitarApp {
     showErrorMessage(message) {
         this.setCameraStatus(message);
         console.error(message);
+    }
+    
+    /**
+     * Set audio status message
+     */
+    setAudioStatus(message) {
+        if (!this.elements.audioStatus) return;
+        
+        this.elements.audioStatus.textContent = message;
+        this.elements.audioStatus.style.display = message ? 'block' : 'none';
+    }
+    
+    /**
+     * Enable audio with user interaction
+     */
+    async enableAudio() {
+        if (!this.soundEngine) {
+            console.error('Sound engine not initialized');
+            return;
+        }
+        
+        try {
+            // Disable the button during initialization
+            this.elements.enableAudioBtn.disabled = true;
+            this.setAudioStatus('Starting audio engine...');
+            
+            // Initialize the audio engine
+            await this.soundEngine.setup();
+            
+            console.debug('Audio engine initialized successfully');
+            this.setAudioStatus('Audio engine ready! You can now make sounds.');
+            
+            // Update the button to show it's active
+            this.elements.enableAudioBtn.textContent = 'Audio Enabled';
+            this.elements.enableAudioBtn.classList.add('active');
+            
+            // Test the sound after a short delay
+            try {
+                setTimeout(() => {
+                    console.debug('Testing sound...');
+                    this.soundEngine.testSound();
+                    
+                    // Clear the message after the test sound
+                    setTimeout(() => {
+                        this.setAudioStatus('');
+                    }, 2000);
+                }, 500);
+            } catch (testError) {
+                console.error('Error testing sound:', testError);
+                this.setAudioStatus('Audio initialized but test sound failed.');
+            }
+        } catch (error) {
+            console.error('Error enabling audio:', error);
+            this.setAudioStatus('⚠️ Audio error: Click Enable Audio to retry');
+            this.elements.enableAudioBtn.disabled = false;
+        }
     }
 }
 
