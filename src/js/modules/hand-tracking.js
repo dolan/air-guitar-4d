@@ -61,15 +61,22 @@ export class HandTracking {
      * @param {number} angle - Angle in degrees to adjust the guitar plane (35-90)
      */
     setGuitarPlaneAngle(angle) {
-        // Store previous angle for animation
-        this.previousAngle = this.guitarPlaneAngle;
+        // Ensure angle is within valid range
+        const clampedAngle = Math.max(35, Math.min(90, angle));
         
-        // Clamp angle to valid range
-        this.guitarPlaneAngle = Math.max(35, Math.min(90, angle));
-        console.debug(`Guitar plane angle set to ${this.guitarPlaneAngle}°`);
+        // If angle changed, start animation
+        if (clampedAngle !== this.guitarPlaneAngle) {
+            this.previousGuitarPlaneAngle = this.guitarPlaneAngle;
+            this.guitarPlaneAngle = clampedAngle;
+            this.animateAngleChange();
+            
+            // Update guitar plane points
+            this.calculateGuitarPlanePoints();
+            
+            // console.debug(`Guitar plane angle set to ${this.guitarPlaneAngle}°`);
+        }
         
-        // Trigger angle change animation
-        this.animateAngleChange();
+        return this.guitarPlaneAngle;
     }
     
     /**
@@ -82,7 +89,7 @@ export class HandTracking {
         }
         
         const startTime = performance.now();
-        const startAngle = this.previousAngle || 0;
+        const startAngle = this.previousGuitarPlaneAngle || 0;
         const targetAngle = this.guitarPlaneAngle;
         const animationDuration = 300; // ms
         
@@ -131,17 +138,16 @@ export class HandTracking {
      */
     async _initTensorFlow() {
         try {
-            console.debug('Initializing TensorFlow.js...');
-            // Wait for TensorFlow to be ready
-            if (window.tf) {
-                await window.tf.ready();
-                this.tfReady = true;
-                console.debug('TensorFlow.js initialized successfully');
-            } else {
-                console.error('TensorFlow.js not found in global scope');
-            }
+            // console.debug('Initializing TensorFlow.js...');
+            
+            // Wait for TensorFlow.js to be ready
+            await window.tf.ready();
+            
+            // console.debug('TensorFlow.js initialized successfully');
+            return true;
         } catch (error) {
-            console.error('Error initializing TensorFlow:', error);
+            console.error('Failed to initialize TensorFlow.js:', error);
+            return false;
         }
     }
     
@@ -149,160 +155,198 @@ export class HandTracking {
      * Initialize the hand tracking model
      */
     async setup() {
+        if (!this.videoElement || !this.videoElement.srcObject) {
+            console.error('Video element not ready or no stream attached');
+            return false;
+        }
+        
         try {
-            console.log('Setting up hand tracking with MediaPipe Hands...');
-            
-            // Make sure TensorFlow is ready
-            if (!this.tfReady && window.tf) {
-                console.debug('Waiting for TensorFlow.js to be ready...');
-                await window.tf.ready();
-                this.tfReady = true;
-                console.debug('TensorFlow.js now ready');
+            // Ensure TensorFlow.js is ready
+            if (!window.tf) {
+                console.error('TensorFlow.js not available');
+                return false;
             }
-
-            // Check if we already have a detector - if so, don't recreate it
+            
+            // console.debug('Waiting for TensorFlow.js to be ready...');
+            await window.tf.ready();
+            // console.debug('TensorFlow.js now ready');
+            
+            // Check if we already have a detector
             if (this.detector) {
-                console.debug('Detector already exists, reusing existing detector');
+                // console.debug('Detector already exists, reusing existing detector');
                 this.isRunning = true;
                 return true;
             }
-
-            // Force backend to WebGL for better performance
-            if (window.tf && window.tf.setBackend) {
-                try {
-                    await window.tf.setBackend('webgl');
-                    console.debug('Set TensorFlow backend to WebGL');
-                } catch (backendError) {
-                    console.warn('Could not set backend to WebGL:', backendError.message);
-                }
+            
+            // Set WebGL as preferred backend
+            try {
+                window.tf.setBackend('webgl');
+                // console.debug('Set TensorFlow backend to WebGL');
+            } catch (backendError) {
+                console.warn('Failed to set WebGL backend:', backendError);
             }
             
-            // Detailed diagnostics for libraries
-            console.debug('Library availability check:');
-            console.debug('- TensorFlow:', typeof window.tf !== 'undefined');
-            console.debug('- tf.ready function:', typeof window.tf?.ready === 'function');
-            console.debug('- tf.getBackend:', typeof window.tf?.getBackend === 'function');
-            if (typeof window.tf?.getBackend === 'function') {
-                console.debug('- Current backend:', window.tf.getBackend());
-            }
-            console.debug('- handPoseDetection:', typeof window.handPoseDetection !== 'undefined');
+            // Log library availability for debugging
+            // console.debug('Library availability check:');
+            // console.debug('- TensorFlow:', typeof window.tf !== 'undefined');
+            // console.debug('- tf.ready function:', typeof window.tf?.ready === 'function');
+            // console.debug('- tf.getBackend:', typeof window.tf?.getBackend === 'function');
             
-            // Wait for the handPoseDetection library to be loaded in the global scope
-            if (!window.handPoseDetection) {
-                console.error('Hand pose detection library not found');
-                throw new Error('Hand pose detection library not loaded');
+            // console.debug('- Current backend:', window.tf.getBackend());
+            
+            // console.debug('- handPoseDetection:', typeof window.handPoseDetection !== 'undefined');
+            
+            // Verify that the handPoseDetection library is available
+            if (typeof window.handPoseDetection === 'undefined') {
+                console.error('MediaPipe Hands library (handPoseDetection) not loaded');
+                return false;
             }
             
-            console.debug('Hand pose detection library is available');
-            console.debug('- MediaPipe Hands model:', typeof window.handPoseDetection.SupportedModels?.MediaPipeHands);
-            console.debug('- createDetector function:', typeof window.handPoseDetection.createDetector);
+            // console.debug('Hand pose detection library is available');
+            // console.debug('- MediaPipe Hands model:', typeof window.handPoseDetection.SupportedModels?.MediaPipeHands);
+            // console.debug('- createDetector function:', typeof window.handPoseDetection.createDetector);
             
-            // Use a more compatible configuration
-            const updatedConfig = {
-                runtime: 'mediapipe',
-                modelType: 'lite', // Change to lite for better compatibility
-                maxHands: 2,
-                solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915',
-                scoreThreshold: 0.5
-            };
-
-            console.debug('Using updated model configuration:', updatedConfig);
-            this.modelConfig = updatedConfig;
-
-            // Attempt to create detector with timeout and retry
-            console.debug('Creating hand pose detector...');
-
-            // Create a promise with timeout
-            const createDetectorWithTimeout = async (timeout = 10000) => {
-                return Promise.race([
-                    window.handPoseDetection.createDetector(
-                        window.handPoseDetection.SupportedModels.MediaPipeHands,
-                        this.modelConfig
-                    ),
-                    new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('Detector creation timed out')), timeout)
-                    )
-                ]);
-            };
-
-            // Try up to 3 times to create the detector
-            let attempts = 0;
-            let detectorCreated = false;
-
-            while (attempts < 3 && !detectorCreated) {
-                attempts++;
-                try {
-                    console.debug(`Detector creation attempt ${attempts}...`);
-                    this.detector = await createDetectorWithTimeout();
-                    if (this.detector) {
-                        detectorCreated = true;
-                        console.debug('Detector created successfully:', !!this.detector);
-                    } else {
-                        console.warn('Detector creation returned null or undefined');
-                        // Add a slight delay before next attempt
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                    }
-                } catch (detectorError) {
-                    console.error(`Error creating detector (attempt ${attempts}/3):`, detectorError);
-                    
-                    if (attempts >= 3) {
-                        throw new Error(`Failed to create hand pose detector after 3 attempts: ${detectorError.message}`);
-                    }
-                    
-                    // Wait before retrying
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                }
-            }
-
-            if (!this.detector) {
-                console.error('Detector creation failed after multiple attempts');
+            // Create the hand pose detector
+            try {
+                // Get specified model or default to MediaPipeHands
+                const model = window.handPoseDetection.SupportedModels.MediaPipeHands;
                 
-                // Try one more time with an even simpler configuration
-                console.debug('Trying with absolute minimum configuration...');
-                this.detector = await window.handPoseDetection.createDetector(
-                    window.handPoseDetection.SupportedModels.MediaPipeHands,
-                    { runtime: 'mediapipe', maxHands: 2 }
-                );
+                // Create configuration with performance tradeoffs for real-time use
+                // Note: Adjust parameters based on performance testing
+                const config = {
+                    runtime: 'mediapipe',
+                    modelType: 'lite',
+                    maxHands: 2,
+                    solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands',
+                };
                 
+                // Update config with processing options
+                const updatedConfig = { ...config, ...this.processingOptions };
+                // console.debug('Using updated model configuration:', updatedConfig);
+                
+                // Create attempts counter for retry logic
+                let attempts = 0;
+                // console.debug('Creating hand pose detector...');
+
+                // Create a promise with timeout
+                const createDetectorWithTimeout = async (timeout = 10000) => {
+                    return Promise.race([
+                        window.handPoseDetection.createDetector(
+                            model,
+                            updatedConfig
+                        ),
+                        new Promise((_, reject) => 
+                            setTimeout(() => reject(new Error('Detector creation timed out')), timeout)
+                        )
+                    ]);
+                };
+
+                // Try up to 3 times to create the detector
+                let detectorCreated = false;
+
+                while (attempts < 3 && !detectorCreated) {
+                    attempts++;
+                    try {
+                        // console.debug(`Detector creation attempt ${attempts}...`);
+                        this.detector = await createDetectorWithTimeout();
+                        if (this.detector) {
+                            detectorCreated = true;
+                            // console.debug('Detector created successfully:', !!this.detector);
+                        } else {
+                            // console.warn('Detector creation returned null or undefined');
+                            // Add a slight delay before next attempt
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                        }
+                    } catch (detectorError) {
+                        console.error(`Error creating detector (attempt ${attempts}/3):`, detectorError);
+                        
+                        if (attempts >= 3) {
+                            throw new Error(`Failed to create hand pose detector after 3 attempts: ${detectorError.message}`);
+                        }
+                        
+                        // Wait before retrying
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    }
+                }
+
                 if (!this.detector) {
-                    throw new Error('Hand pose detector was not created properly');
-                } else {
-                    console.debug('Last-ditch attempt created a detector successfully');
-                }
-            }
-
-            // Initialize with a test detection to ensure everything works
-            console.debug('Testing detector with a dummy detection...');
-
-            if (this.videoElement.readyState >= 2) { // Have current data or enough data to play
-                try {
-                    const testDetection = await this.detector.estimateHands(
-                        this.videoElement,
-                        this.processingOptions
+                    console.error('Detector creation failed after multiple attempts');
+                    
+                    // Try one more time with an even simpler configuration
+                    console.debug('Trying with absolute minimum configuration...');
+                    this.detector = await window.handPoseDetection.createDetector(
+                        model,
+                        { runtime: 'mediapipe', maxHands: 2 }
                     );
-                    console.debug('Test detection succeeded:', testDetection);
-                } catch (testError) {
-                    console.warn('Test detection failed, but continuing:', testError);
-                    // Continue anyway, as the video might not be ready yet
+                    
+                    if (!this.detector) {
+                        throw new Error('Hand pose detector was not created properly');
+                    } else {
+                        console.debug('Last-ditch attempt created a detector successfully');
+                    }
                 }
-            } else {
-                console.debug('Video not ready for test detection, will try during regular processing');
+
+                // Initialize with a test detection to ensure everything works
+                console.debug('Testing detector with a dummy detection...');
+
+                if (this.videoElement.readyState >= 2) { // Have current data or enough data to play
+                    try {
+                        const testDetection = await this.detector.estimateHands(
+                            this.videoElement,
+                            this.processingOptions
+                        );
+                        console.debug('Test detection succeeded:', testDetection);
+                    } catch (testError) {
+                        console.warn('Test detection failed, but continuing:', testError);
+                        // Continue anyway, as the video might not be ready yet
+                    }
+                } else {
+                    console.debug('Video not ready for test detection, will try during regular processing');
+                }
+                
+                console.log('Hand tracking model loaded successfully');
+                
+                // Resize canvas to match video dimensions
+                this.resizeCanvas();
+                console.debug('Canvas resized to:', {
+                    width: this.canvasElement.width,
+                    height: this.canvasElement.height
+                });
+                
+                // Start automatically
+                this.isRunning = true;
+                console.debug('Setting isRunning to true automatically');
+                
+                return true;
+            } catch (error) {
+                console.error('Error setting up hand tracking:', error);
+                console.error('Stack trace:', error.stack);
+                
+                // Try to recover with a fallback configuration if possible
+                try {
+                    console.debug('Trying fallback configuration...');
+                    const fallbackConfig = {
+                        runtime: 'tfjs',
+                        modelType: 'lite',
+                        maxHands: 2
+                    };
+                    console.debug('Using fallback configuration:', fallbackConfig);
+                    this.detector = await window.handPoseDetection.createDetector(
+                        model,
+                        fallbackConfig
+                    );
+                    
+                    if (this.detector) {
+                        console.debug('Fallback detector created successfully');
+                        this.isRunning = true;
+                        return true;
+                    }
+                } catch (fallbackError) {
+                    console.error('Fallback configuration also failed:', fallbackError);
+                }
+                
+                throw new Error(`Hand tracking setup failed: ${error.message}`);
             }
-            
-            console.log('Hand tracking model loaded successfully');
-            
-            // Resize canvas to match video dimensions
-            this.resizeCanvas();
-            console.debug('Canvas resized to:', {
-                width: this.canvasElement.width,
-                height: this.canvasElement.height
-            });
-            
-            // Start automatically
-            this.isRunning = true;
-            console.debug('Setting isRunning to true automatically');
-            
-            return true;
         } catch (error) {
             console.error('Error setting up hand tracking:', error);
             console.error('Stack trace:', error.stack);
@@ -317,7 +361,7 @@ export class HandTracking {
                 };
                 console.debug('Using fallback configuration:', fallbackConfig);
                 this.detector = await window.handPoseDetection.createDetector(
-                    window.handPoseDetection.SupportedModels.MediaPipeHands,
+                    model,
                     fallbackConfig
                 );
                 
@@ -382,88 +426,90 @@ export class HandTracking {
      * @returns {Object} Detected hand data
      */
     async processFrame() {
-        // More detailed check for why processing might be skipped
-        if (!this.ctx || !this.detector || !this.videoElement || !this.isRunning) {
-            console.debug('Skipping frame processing:', { 
-                hasContext: !!this.ctx,
-                hasDetector: !!this.detector,
-                hasVideo: !!this.videoElement,
-                isRunning: this.isRunning
-            });
+        // Skip processing if not running or missing components
+        if (!this.isRunning || !this.detector || !this.videoElement || !this.canvasElement) {
+            // console.debug('Skipping frame processing:', {
+            //     isRunning: this.isRunning,
+            //     detector: !!this.detector,
+            //     videoElement: !!this.videoElement,
+            //     canvasElement: !!this.canvasElement
+            // });
             return null;
         }
         
+        // Debug output
+        // console.debug('Processing frame - detailed debug:');
+        // console.debug('- Canvas dimensions:', this.canvasElement.width, 'x', this.canvasElement.height);
+        // console.debug('- Video dimensions:', this.videoElement.videoWidth, 'x', this.videoElement.videoHeight);
+        // console.debug('- Mirror setting:', this.processingOptions.flipHorizontal);
+        // console.debug('- Processing options:', JSON.stringify(this.processingOptions));
+        
+        // Clear the canvas
+        this.ctx.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
+        
         try {
-            // Debug info for tracking the process
-            console.debug('Processing frame - detailed debug:');
-            console.debug('- Canvas dimensions:', this.canvasElement.width, 'x', this.canvasElement.height);
-            console.debug('- Video dimensions:', this.videoElement.videoWidth, 'x', this.videoElement.videoHeight);
-            console.debug('- Mirror setting:', this.processingOptions.flipHorizontal);
-            console.debug('- Processing options:', JSON.stringify(this.processingOptions));
+            // console.debug('===== FRAME PROCESSING START =====');
+            // console.debug('Video element ready state:', this.videoElement.readyState);
+            // console.debug('Video dimensions:', this.videoElement.videoWidth, 'x', this.videoElement.videoHeight);
             
-            // Draw a visual indicator that the frame processing is active
-            this.drawDebugInfo();
-            
-            // Store previous frame data
-            this.lastFrameHands = { ...this.hands };
-            
-            console.debug('===== FRAME PROCESSING START =====');
-            console.debug('Video element ready state:', this.videoElement.readyState);
-            console.debug('Video dimensions:', this.videoElement.videoWidth, 'x', this.videoElement.videoHeight);
-            
-            // Check if video is actually ready
+            // Check if video is ready for processing
             if (this.videoElement.readyState < 2) { // HAVE_CURRENT_DATA
-                console.debug('Video not ready yet, skipping hand detection');
+                // console.debug('Video not ready yet, skipping hand detection');
                 return null;
             }
             
+            // Process the frame with the detector
+            // console.debug('Calling hand pose detector...');
+            
             // Detect hands in the current frame
-            console.debug('Calling hand pose detector...');
-            const detectedHands = await this.detector.estimateHands(
-                this.videoElement, 
-                this.processingOptions
-            );
+            const detectedHands = await this.detector.estimateHands(this.videoElement, this.processingOptions);
             
-            console.debug(`Detected ${detectedHands.length} hands:`, detectedHands);
+            // Analyze the detected hands
+            // console.debug(`Detected ${detectedHands.length} hands:`, detectedHands);
             
-            // Reset current hands
-            this.hands = { left: null, right: null };
+            // Process each hand
+            const handData = {
+                leftHand: null,
+                rightHand: null,
+                bothHands: detectedHands.length === 2,
+                allHands: detectedHands,
+                lastFrameTimestamp: Date.now()
+            };
             
-            // Process detected hands
             for (const hand of detectedHands) {
-                // Swap hands based on mirroring setting
-                const modelHandedness = hand.handedness.toLowerCase();
-                let correctedHandedness;
+                // Correct the handedness for mirroring
+                const modelHandedness = hand.handedness;
+                const correctedHandedness = this.processingOptions.flipHorizontal ? 
+                    (modelHandedness === 'Left' ? 'Right' : 'Left') : modelHandedness;
                 
-                // Always using mirrored view, so we always swap the handedness
-                correctedHandedness = modelHandedness === 'left' ? 'right' : 'left';
+                // console.debug(`Detected ${modelHandedness} hand (displayed as ${correctedHandedness}) with score: ${hand.score}`);
+                // console.debug(`Hand has ${hand.keypoints.length} keypoints`);
                 
-                // Store the hand with the corrected handedness
-                this.hands[correctedHandedness] = hand;
-                
-                console.debug(`Detected ${modelHandedness} hand (displayed as ${correctedHandedness}) with score: ${hand.score}`);
-                console.debug(`Hand has ${hand.keypoints.length} keypoints`);
-                
-                // Log a few keypoints for verification
-                if (hand.keypoints.length > 0) {
-                    console.debug('Wrist position:', hand.keypoints[0]);
-                    console.debug('Index fingertip:', hand.keypoints[8]);
+                // Store processed hand data
+                if (correctedHandedness === 'Left') {
+                    handData.leftHand = hand;
+                } else if (correctedHandedness === 'Right') {
+                    handData.rightHand = hand;
                 }
+                
+                // console.debug('Wrist position:', hand.keypoints[0]);
+                // console.debug('Index fingertip:', hand.keypoints[8]);
             }
             
-            // Draw landmarks on canvas
+            // Draw the hand landmarks on the canvas
             if (detectedHands.length > 0) {
-                console.debug('Drawing hand landmarks on canvas');
-                this.drawHandLandmarks();
+                // console.debug('Drawing hand landmarks on canvas');
+                this.drawHandLandmarks(detectedHands);
             } else {
-                console.debug('No hands to draw');
+                // console.debug('No hands to draw');
             }
             
-            console.debug('===== FRAME PROCESSING END =====');
+            // console.debug('===== FRAME PROCESSING END =====');
             
-            return this.hands;
+            // Return the processed hand data
+            return handData;
         } catch (error) {
-            console.error('Error processing hand tracking frame:', error);
+            console.error('Error processing video frame:', error);
             return null;
         }
     }
@@ -725,7 +771,7 @@ export class HandTracking {
     /**
      * Draw the detected hand landmarks on the canvas
      */
-    drawHandLandmarks() {
+    drawHandLandmarks(hands) {
         if (!this.ctx) {
             console.error('Cannot draw hand landmarks: Canvas context is not initialized');
             return;
@@ -780,7 +826,7 @@ export class HandTracking {
         // Now draw the hands
         // Process both hands
         for (const handType of ['left', 'right']) {
-            const hand = this.hands[handType];
+            const hand = hands[handType];
             if (!hand || !hand.keypoints || hand.keypoints.length === 0) {
                 console.debug(`No ${handType} hand detected for drawing`);
                 continue;

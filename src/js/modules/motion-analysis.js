@@ -66,111 +66,103 @@ export class MotionAnalysis {
      * @returns {Object} Analysis results including strum events, fret positions, etc.
      */
     processHandData(handData, strummingMotion, chordData, orientations) {
+        // Skip if not active
         if (!this.isActive) {
             // console.debug('Motion analysis is not active, skipping hand data processing');
             return null;
         }
         
+        // Skip if no hand data
         if (!handData) {
             // console.debug('No hand data provided, skipping processing');
             return null;
         }
         
-        // Store current hand data for comparison
-        const previousHandData = this.lastHandData;
-        this.lastHandData = handData;
+        // Store current timestamp
+        const now = Date.now();
         
-        // Initialize result object
-        const result = {
-            strumDetected: false,
-            strumDirection: null,
-            strumIntensity: 0,
-            fretPosition: this.lastFretPosition,
-            chordType: this.lastDetectedChord ? this.lastDetectedChord.name : 'none'
+        // Store context data for later processing
+        const motionContext = {
+            timestamp: now,
+            timeSinceLastProcess: now - this.lastProcessTime,
+            hands: handData,
+            strummingMotion,
+            chordData,
+            orientations
         };
         
-        // Process chord formation (left hand)
-        if (chordData && chordData.name !== 'Unknown') {
-            if (!this.lastDetectedChord || this.lastDetectedChord.name !== chordData.name) {
-                // Chord has changed
-                this.lastDetectedChord = chordData;
-                result.chordType = chordData.name;
-                
-                // Trigger chord change callback
-                if (this.onChordChanged) {
-                    // console.debug(`Chord changed to: ${chordData.name}`);
-                    this.onChordChanged(chordData);
-                }
+        // Update the motion history with new data
+        this.updateMotionHistory(motionContext);
+        
+        // Create results object for this frame
+        const result = {
+            timestamp: now,
+            strumDetected: false,
+            chordType: 'none',
+            fretPosition: 0,
+            strumDirection: null,
+            strumIntensity: 0
+        };
+        
+        // Update chord detection
+        if (chordData && chordData.name && chordData.name !== 'Unknown') {
+            // Track chord changes
+            if (this.currentChord !== chordData.name) {
+                // console.debug(`Chord changed to: ${chordData.name}`);
+                this.currentChord = chordData.name;
             }
+            
+            result.chordType = chordData.name;
         }
         
-        // Determine fret position based on distance between hands
-        // When hands are far apart (normal playing position), fret position is low (open strings)
-        // When fret hand moves closer to strumming hand, fret position increases (higher up the neck)
-        if (handData.left && handData.right) {
-            // Get wrist positions for both hands and apply smoothing
-            const rawStrumWrist = handData.left.keypoints[0]; // Left hand in the mirrored view (right hand in reality)
-            const rawFretWrist = handData.right.keypoints[0]; // Right hand in the mirrored view (left hand in reality)
+        // Detect fret position from left hand (need to be more sophisticated in the future)
+        if (handData.leftHand) {
+            // Just a simple mapping of x position to fret for now
+            // We can make this much more sophisticated later
+            const wristX = handData.leftHand.keypoints[0].x;
+            const screenWidth = window.innerWidth;
             
-            // Apply smoothing filter for more stable positions
-            const strumWrist = this.smoothMotion('left', rawStrumWrist);
-            const fretWrist = this.smoothMotion('right', rawFretWrist);
+            // Calculate distance from left edge as percentage of screen width
+            const distance = wristX;
+            const normalizedDistance = distance / screenWidth;
             
-            // Calculate distance between hands (using smoothed positions)
-            const distance = Math.sqrt(
-                Math.pow(strumWrist.x - fretWrist.x, 2) + 
-                Math.pow(strumWrist.y - fretWrist.y, 2)
-            );
+            // Map to fret positions (0-12)
+            // Lower fret numbers are on the right side of the screen (because video is mirrored)
+            const fretPosition = Math.round(normalizedDistance * 12);
             
-            // Get canvas dimensions for normalization
-            const canvas = document.getElementById('overlay');
-            const canvasWidth = canvas.width;
-            const canvasHeight = canvas.height;
-            const maxPossibleDistance = Math.sqrt(canvasWidth * canvasWidth + canvasHeight * canvasHeight);
-            
-            // Normalize distance to 0-1 range
-            const normalizedDistance = Math.min(1, distance / (maxPossibleDistance * 0.7));
-            
-            // Calculate fret position (0-12) based on normalized distance
-            // When hands are close, fret position is high
-            // When hands are far apart, fret position is low
-            const fretPosition = Math.min(12, Math.max(0, Math.round((1 - normalizedDistance) * 12)));
-            
-            console.debug(`Hand distance: ${distance.toFixed(2)}px, Normalized: ${normalizedDistance.toFixed(2)}, Fret position: ${fretPosition}`);
-            
-            this.lastFretPosition = fretPosition;
+            // Store result
             result.fretPosition = fretPosition;
-        } else if (handData.left) {
-            // Only strumming hand visible - keep the last fret position
-            // This allows playing while moving the strumming hand without losing fret position
-            result.fretPosition = this.lastFretPosition;
+            
+            // console.debug(`Hand distance: ${distance.toFixed(2)}px, Normalized: ${normalizedDistance.toFixed(2)}, Fret position: ${fretPosition}`);
         }
         
-        // Process strumming motion (right hand)
-        if (strummingMotion) {
-            const now = Date.now();
+        // Process strumming motion
+        if (strummingMotion && now - this.lastStrumTime > this.strumCooldownMs) {
+            result.strumDetected = true;
+            result.strumDirection = strummingMotion.direction;
+            result.strumIntensity = strummingMotion.intensity || 0.8; // Default to medium-high intensity
             
-            // Check if we've passed the cooldown period to prevent multiple strums
-            if (now - this.lastStrumTime > this.strumCooldown) {
-                console.debug(`Strum detected! Direction: ${strummingMotion.direction}, Time since last strum: ${now - this.lastStrumTime}ms`);
-                
-                result.strumDetected = true;
-                result.strumDirection = strummingMotion.direction;
-                result.strumIntensity = strummingMotion.intensity;
-                
-                this.lastStrumTime = now;
-                
-                // Trigger strum callback
-                if (this.onStrumDetected) {
-                    // console.debug('Calling strum callback with result data');
-                    this.onStrumDetected(result);
-                } else {
-                    // console.warn('No strum callback registered!');
-                }
-            } else {
-                console.debug(`Strum cooldown active. Time since last strum: ${now - this.lastStrumTime}ms`);
+            // Calculate actual intensity based on motion speed
+            if (strummingMotion.speed) {
+                result.strumIntensity = Math.min(1.0, strummingMotion.speed / 100);
             }
+            
+            // console.debug(`Strum detected! Direction: ${strummingMotion.direction}, Time since last strum: ${now - this.lastStrumTime}ms`);
+            
+            // Call registered callback if available
+            if (typeof this.strumCallback === 'function') {
+                // console.debug('Calling strum callback with result data');
+                this.strumCallback(result);
+            }
+            
+            // Update last strum time
+            this.lastStrumTime = now;
+        } else if (strummingMotion) {
+            // console.debug(`Strum cooldown active. Time since last strum: ${now - this.lastStrumTime}ms`);
         }
+        
+        // Update last process time
+        this.lastProcessTime = now;
         
         return result;
     }

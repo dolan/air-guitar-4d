@@ -108,7 +108,7 @@
                 // Make sure TensorFlow.js is ready before importing our app
                 if (window.tf) {
                     await tf.ready();
-                    console.debug('TensorFlow.js is ready');
+                    // console.debug('TensorFlow.js is ready');
                 } else {
                     console.error('TensorFlow.js not loaded properly');
                     document.getElementById('camera-status').textContent = 'Error loading TensorFlow.js';

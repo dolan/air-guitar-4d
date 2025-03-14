@@ -229,7 +229,7 @@ class AirGuitarApp {
         
         // Activate motion analysis
         if (this.motionAnalysis && !this.motionAnalysis.isActive) {
-            console.debug('Activating motion analysis system...');
+            // console.debug('Activating motion analysis system...');
             this.motionAnalysis.setup();
         }
         
@@ -253,18 +253,18 @@ class AirGuitarApp {
      */
     async processVideoFrame() {
         if (!this.processingActive) {
-            console.debug('Processing not active, stopping frame processing');
+            // console.debug('Processing not active, stopping frame processing');
             return;
         }
         
         try {
             // Verify that all components are ready
             if (!this.handTracking || !this.handTracking.isRunning) {
-                console.debug('Hand tracking not ready, attempting to initialize...');
+                // console.debug('Hand tracking not ready, attempting to initialize...');
                 if (this.handTracking) {
                     try {
                         await this.handTracking.setup();
-                        console.debug('Hand tracking initialized in processVideoFrame');
+                        // console.debug('Hand tracking initialized in processVideoFrame');
                     } catch (setupError) {
                         console.error('Failed to initialize hand tracking in processVideoFrame:', setupError);
                     }
@@ -272,11 +272,11 @@ class AirGuitarApp {
             }
             
             // Process the frame with hand tracking
-            console.debug('Processing frame...');
+            // console.debug('Processing frame...');
             const handData = await this.handTracking.processFrame();
             
             if (handData) {
-                console.debug('Hand data received:', Object.keys(handData).filter(k => handData[k]));
+                // console.debug('Hand data received:', Object.keys(handData).filter(k => handData[k]));
                 
                 // Check for strumming motion
                 const strummingMotion = this.handTracking.detectStrummingMotion();
@@ -298,17 +298,17 @@ class AirGuitarApp {
                     this.soundEngine.playStrum(motionResult);
                 }
             } else {
-                console.debug('No hand data received from processFrame');
+                // console.debug('No hand data received from processFrame');
             }
         } catch (error) {
             console.error("Error in frame processing:", error);
             
             // Don't stop processing due to errors, just log and continue
             if (this.handTracking) {
-                console.debug('Checking hand tracking state:', {
-                    isRunning: this.handTracking.isRunning,
-                    detector: !!this.handTracking.detector
-                });
+                // console.debug('Checking hand tracking state:', {
+                //     isRunning: this.handTracking.isRunning,
+                //     detector: !!this.handTracking.detector
+                // });
             }
         }
         
@@ -482,7 +482,7 @@ class AirGuitarApp {
             // Initialize the audio engine
             await this.soundEngine.setup();
             
-            console.debug('Audio engine initialized successfully');
+            // console.debug('Audio engine initialized successfully');
             this.setAudioStatus('Audio engine ready! You can now make sounds.');
             
             // Update the button to show it's active
@@ -492,7 +492,7 @@ class AirGuitarApp {
             // Test the sound after a short delay
             try {
                 setTimeout(() => {
-                    console.debug('Testing sound...');
+                    // console.debug('Testing sound...');
                     this.soundEngine.testSound();
                     
                     // Clear the message after the test sound

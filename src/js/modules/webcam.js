@@ -42,14 +42,16 @@ export class WebcamHandler {
     }
     
     /**
-     * Toggle the mirror setting
-     * @param {boolean} isMirrored - Whether the video should be mirrored
+     * Set whether to mirror the video feed (flip horizontally)
      */
     setMirrored(isMirrored) {
-        // For consistency, always set to true as we've removed the toggle
-        this.isMirrored = true;
-        this.applyMirrorSetting();
-        console.debug('WebcamHandler: Mirror setting is always enabled');
+        this.isMirrored = isMirrored;
+        
+        if (this.videoElement) {
+            this.videoElement.style.transform = isMirrored ? 'scaleX(-1)' : 'scaleX(1)';
+        }
+        
+        // console.debug('WebcamHandler: Mirror setting is always enabled');
     }
     
     /**
