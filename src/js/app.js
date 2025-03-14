@@ -37,6 +37,9 @@ class AirGuitarApp {
             volumeValue: document.getElementById('volume-value')
         };
         
+        // Hide audio button initially
+        this.elements.enableAudioBtn.style.display = 'none';
+        
         // Will be initialized in setup()
         this.webcamHandler = null;
         this.handTracking = null;
@@ -162,6 +165,14 @@ class AirGuitarApp {
                 this.elements.cameraSelect.disabled = true;
                 this.setCameraStatus('Camera started'); // Show status message
                 
+                // Show audio button once camera is started
+                this.elements.enableAudioBtn.style.display = 'block';
+                
+                // Remove camera status message after 3 seconds
+                setTimeout(() => {
+                    this.elements.cameraStatus.textContent = '';
+                }, 3000);
+                
                 console.log('Camera setup successful, initializing hand tracking...');
                 
                 // Ensure mirroring is set correctly
@@ -174,6 +185,11 @@ class AirGuitarApp {
                 } catch (handTrackingError) {
                     console.error('Error setting up hand tracking:', handTrackingError);
                     this.setCameraStatus('Camera started, but hand tracking failed to initialize');
+                    
+                    // Still clear the error message after 3 seconds
+                    setTimeout(() => {
+                        this.elements.cameraStatus.textContent = '';
+                    }, 3000);
                 }
                 
                 // Start the video processing

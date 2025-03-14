@@ -80,10 +80,13 @@ This checklist tracks the implementation progress of the Air Guitar Web Applicat
 
 ## 8. Application UI/UX
 - [ ] Design landing page with instructions
-- [ ] Create setup/calibration workflow
+- [x] Create setup/calibration workflow
 - [ ] Implement settings panel
 - [ ] Add instructional elements/tutorial
-- [ ] Design responsive layout for different devices
+- [x] Design responsive layout for different devices
+- [x] Hide audio button until camera is enabled to enforce correct setup sequence
+- [x] Auto-hide camera status messages after displaying for a few seconds
+- [x] Adjust guitar overlay to have 25% more gutter space on top and bottom
 - [ ] Implement accessibility features
 - [ ] Create unit tests for UI/UX components
 
@@ -130,7 +133,7 @@ This checklist tracks the implementation progress of the Air Guitar Web Applicat
 ---
 
 ## Progress Tracker
-- Total Tasks: 39/78 complete (50%)
+- Total Tasks: 42/81 complete (52%)
 - Major Components: 3/13 complete (23%)
 
 *Last updated: March 14, 2025* 

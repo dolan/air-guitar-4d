@@ -17,6 +17,10 @@ export class UIFeedback {
         this.stringCount = 6;
         this.fretCount = 12;
         
+        // Guitar overlay positioning (add additional gutter space)
+        this.topGutterPercentage = 0.25;    // 25% gutter at the top
+        this.bottomGutterPercentage = 0.25; // 25% gutter at the bottom
+        
         // Animation properties
         this.strumAnimationDuration = 500; // ms
         this.strumAnimationStartTime = 0;
@@ -222,7 +226,12 @@ export class UIFeedback {
      */
     drawVirtualFretboard() {
         const { width, height } = this.canvas;
-        const fretboardY = height - this.fretboardHeight - 20;
+        
+        // Calculate bottom gutter
+        const bottomGutter = height * this.bottomGutterPercentage;
+        
+        // Position fretboard above the bottom gutter
+        const fretboardY = height - this.fretboardHeight - bottomGutter;
         
         // Draw fretboard background
         this.ctx.fillStyle = this.colors.fretboard;
@@ -273,19 +282,24 @@ export class UIFeedback {
     drawPositionGuide() {
         const { width, height } = this.canvas;
         
+        // Calculate the usable height based on gutter percentages
+        const topGutter = height * this.topGutterPercentage;
+        const bottomGutter = height * this.bottomGutterPercentage;
+        const usableHeight = height - (topGutter + bottomGutter);
+        
         // Left hand guide (fretboard area)
         this.ctx.fillStyle = this.colors.positionGuide;
-        this.ctx.fillRect(0, 0, width * 0.5, height * 0.7);
+        this.ctx.fillRect(0, topGutter, width * 0.5, usableHeight);
         
         // Right hand guide (strumming area)
         this.ctx.fillStyle = 'rgba(100, 100, 255, 0.2)';
-        this.ctx.fillRect(width * 0.5, 0, width * 0.5, height * 0.7);
+        this.ctx.fillRect(width * 0.5, topGutter, width * 0.5, usableHeight);
         
         // Add text labels
         this.ctx.font = '18px Arial';
         this.ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-        this.ctx.fillText('Left Hand (Chord Position)', 20, 30);
-        this.ctx.fillText('Right Hand (Strumming)', width * 0.5 + 20, 30);
+        this.ctx.fillText('Left Hand (Chord Position)', 20, topGutter + 30);
+        this.ctx.fillText('Right Hand (Strumming)', width * 0.5 + 20, topGutter + 30);
     }
     
     /**

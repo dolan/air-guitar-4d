@@ -19,6 +19,23 @@ header {
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
 }
 
+/* Disclaimer Banner */
+.disclaimer-banner {
+    background-color: #2e4057;
+    color: #ffffff;
+    padding: 0.75rem 1rem;
+    text-align: center;
+    font-size: 0.9rem;
+    border-bottom: 1px solid #4fc3f7;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.disclaimer-banner p {
+    max-width: 800px;
+    margin: 0 auto;
+    font-weight: 500;
+}
+
 main {
     max-width: 1200px;
     margin: 0 auto;
