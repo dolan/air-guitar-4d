@@ -2,6 +2,10 @@
 
 A web-based application that allows users to play virtual air guitar using hand tracking technology. This application uses your webcam to detect hand movements and generates guitar sounds in real-time based on your gestures.
 
+## Try It Now
+
+Try the live demo: [Air Guitar 4D on GitHub Pages](https://dolan.github.io/air-guitar-4d/)
+
 ## Features
 
 - Real-time hand tracking using TensorFlow.js/MediaPipe
