@@ -191,6 +191,12 @@ class AirGuitarApp {
     startProcessing() {
         if (this.processingActive) return;
         
+        // Activate motion analysis
+        if (this.motionAnalysis && !this.motionAnalysis.isActive) {
+            console.debug('Activating motion analysis system...');
+            this.motionAnalysis.setup();
+        }
+        
         this.processingActive = true;
         this.processVideoFrame();
     }

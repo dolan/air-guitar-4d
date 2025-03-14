@@ -336,33 +336,54 @@ export class SoundEngine {
      * @param {Object} motionData - Data from motion analysis
      */
     playStrum(motionData) {
-        if (!this.initialized || this.isMuted) {
-            console.debug('Skipping strum: sound engine not initialized or muted');
-            return;
-        }
-        
-        const now = Date.now();
-        if (now - this.lastStrumTime < this.strumCooldownMs) {
-            return; // Prevent strumming too frequently
-        }
-        this.lastStrumTime = now;
-        
-        // Extract data from motion analysis
-        const {
-            strumDetected,
-            strumDirection,
-            strumIntensity,
-            fretPosition,
-            chordType
-        } = motionData;
-        
-        if (!strumDetected) return;
-        
-        console.debug(`Playing strum: ${chordType} at fret ${fretPosition}, intensity: ${strumIntensity}`);
-        
         try {
+            if (!this.initialized) {
+                console.warn('Skipping strum: sound engine not initialized');
+                return;
+            }
+            
+            if (this.isMuted) {
+                console.debug('Skipping strum: sound engine is muted');
+                return;
+            }
+            
+            if (!this.polySynth) {
+                console.error('Cannot play strum: polySynth not initialized');
+                return;
+            }
+            
+            const now = Date.now();
+            if (now - this.lastStrumTime < this.strumCooldownMs) {
+                console.debug(`Strum cooldown active (${this.strumCooldownMs}ms). Time since last strum: ${now - this.lastStrumTime}ms`);
+                return; // Prevent strumming too frequently
+            }
+            this.lastStrumTime = now;
+            
+            // Extract data from motion analysis
+            const {
+                strumDetected,
+                strumDirection,
+                strumIntensity,
+                fretPosition,
+                chordType
+            } = motionData;
+            
+            if (!strumDetected) {
+                console.debug('No strum detected in motion data');
+                return;
+            }
+            
+            console.debug(`Playing strum: ${chordType} at fret ${fretPosition}, intensity: ${strumIntensity}`);
+            
             // Get chord notes
             const chordNotes = this.getChordNotes(chordType, fretPosition);
+            
+            if (!chordNotes || chordNotes.length === 0) {
+                console.error(`No notes found for chord: ${chordType} at fret ${fretPosition}`);
+                return;
+            }
+            
+            console.debug(`Chord notes: ${chordNotes.join(', ')}`);
             
             // Calculate velocity based on strum intensity (0.5-1.0 range)
             const velocity = 0.5 + (strumIntensity * 0.5);
@@ -376,6 +397,7 @@ export class SoundEngine {
                 chordNotes.forEach((note, index) => {
                     this.polySynth.triggerAttackRelease(note, "8n", now + (index * staggerTime), velocity);
                 });
+                console.debug('Played downstrum');
             } else {
                 // Upstrum - play from high string to low string with slight delay
                 const now = Tone.now();
@@ -384,6 +406,7 @@ export class SoundEngine {
                 [...chordNotes].reverse().forEach((note, index) => {
                     this.polySynth.triggerAttackRelease(note, "8n", now + (index * staggerTime), velocity);
                 });
+                console.debug('Played upstrum');
             }
         } catch (error) {
             console.error('Error playing strum:', error);

@@ -59,7 +59,15 @@ export class MotionAnalysis {
      * @returns {Object} Analysis results including strum events, fret positions, etc.
      */
     processHandData(handData, strummingMotion, chordData, orientations) {
-        if (!this.isActive || !handData) return null;
+        if (!this.isActive) {
+            console.debug('Motion analysis is not active, skipping hand data processing');
+            return null;
+        }
+        
+        if (!handData) {
+            console.debug('No hand data provided, skipping processing');
+            return null;
+        }
         
         // Store current hand data for comparison
         const previousHandData = this.lastHandData;
@@ -83,6 +91,7 @@ export class MotionAnalysis {
                 
                 // Trigger chord change callback
                 if (this.onChordChanged) {
+                    console.debug(`Chord changed to: ${chordData.name}`);
                     this.onChordChanged(chordData);
                 }
             }
@@ -113,6 +122,8 @@ export class MotionAnalysis {
             
             // Check if we've passed the cooldown period to prevent multiple strums
             if (now - this.lastStrumTime > this.strumCooldown) {
+                console.debug(`Strum detected! Direction: ${strummingMotion.direction}, Time since last strum: ${now - this.lastStrumTime}ms`);
+                
                 result.strumDetected = true;
                 result.strumDirection = strummingMotion.direction;
                 result.strumIntensity = strummingMotion.intensity;
@@ -121,8 +132,13 @@ export class MotionAnalysis {
                 
                 // Trigger strum callback
                 if (this.onStrumDetected) {
+                    console.debug('Calling strum callback with result data');
                     this.onStrumDetected(result);
+                } else {
+                    console.warn('No strum callback registered!');
                 }
+            } else {
+                console.debug(`Strum cooldown active. Time since last strum: ${now - this.lastStrumTime}ms`);
             }
         }
         
