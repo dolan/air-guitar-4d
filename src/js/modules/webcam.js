@@ -46,8 +46,10 @@ export class WebcamHandler {
      * @param {boolean} isMirrored - Whether the video should be mirrored
      */
     setMirrored(isMirrored) {
-        this.isMirrored = isMirrored;
+        // For consistency, always set to true as we've removed the toggle
+        this.isMirrored = true;
         this.applyMirrorSetting();
+        console.debug('WebcamHandler: Mirror setting is always enabled');
     }
     
     /**

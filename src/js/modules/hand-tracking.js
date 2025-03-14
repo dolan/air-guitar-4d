@@ -29,6 +29,11 @@ export class HandTracking {
         this.lastFrameHands = { left: null, right: null };
         this.calibrated = false;
         
+        // Track last detected chord and strum for visual feedback
+        this.lastDetectedChord = null;
+        this.lastStrumDirection = null;
+        this.strumDisplayTimeout = null; // For temporarily showing strum direction
+        
         // Configuration options
         this.modelConfig = {
             runtime: 'mediapipe', // Use mediapipe runtime which works better in browser
@@ -38,9 +43,9 @@ export class HandTracking {
             scoreThreshold: 0.5
         };
         
-        // Frame processing options
+        // Frame processing options - Always mirror for natural interaction
         this.processingOptions = {
-            flipHorizontal: true  // Mirror image for more intuitive interaction
+            flipHorizontal: true  // View is always mirrored for more intuitive interaction
         };
         
         // Guitar plane angle adjustment (in degrees)
@@ -155,6 +160,13 @@ export class HandTracking {
                 console.debug('TensorFlow.js now ready');
             }
 
+            // Check if we already have a detector - if so, don't recreate it
+            if (this.detector) {
+                console.debug('Detector already exists, reusing existing detector');
+                this.isRunning = true;
+                return true;
+            }
+
             // Force backend to WebGL for better performance
             if (window.tf && window.tf.setBackend) {
                 try {
@@ -227,6 +239,8 @@ export class HandTracking {
                         console.debug('Detector created successfully:', !!this.detector);
                     } else {
                         console.warn('Detector creation returned null or undefined');
+                        // Add a slight delay before next attempt
+                        await new Promise(resolve => setTimeout(resolve, 500));
                     }
                 } catch (detectorError) {
                     console.error(`Error creating detector (attempt ${attempts}/3):`, detectorError);
@@ -242,7 +256,19 @@ export class HandTracking {
 
             if (!this.detector) {
                 console.error('Detector creation failed after multiple attempts');
-                throw new Error('Hand pose detector was not created properly');
+                
+                // Try one more time with an even simpler configuration
+                console.debug('Trying with absolute minimum configuration...');
+                this.detector = await window.handPoseDetection.createDetector(
+                    window.handPoseDetection.SupportedModels.MediaPipeHands,
+                    { runtime: 'mediapipe', maxHands: 2 }
+                );
+                
+                if (!this.detector) {
+                    throw new Error('Hand pose detector was not created properly');
+                } else {
+                    console.debug('Last-ditch attempt created a detector successfully');
+                }
             }
 
             // Initialize with a test detection to ensure everything works
@@ -342,39 +368,13 @@ export class HandTracking {
     
     /**
      * Set the mirrored state for drawing and calculations
-     * @param {boolean} isMirrored - Whether the view should be mirrored
+     * Note: This method is kept for compatibility but will always force mirrored mode
+     * @param {boolean} isMirrored - This parameter is now ignored, view is always mirrored
      */
     setMirrored(isMirrored) {
-        // Store the previous value to detect changes
-        const wasFlipped = this.processingOptions.flipHorizontal;
-        
-        // Update the mirroring setting
-        this.processingOptions.flipHorizontal = isMirrored;
-        console.debug(`Hand tracking mirror mode ${isMirrored ? 'enabled' : 'disabled'}`);
-        
-        // If the mirror setting has changed, we need to recalibrate detection zones
-        if (wasFlipped !== isMirrored && this.hands) {
-            // Clear current hand data to avoid using outdated positions during the transition
-            this.lastFrameHands = { left: null, right: null };
-            this.hands = { left: null, right: null };
-            
-            // Force a recalibration sequence on the next frame
-            this.recalibrateAfterMirrorChange = true;
-            console.debug('Mirror setting changed - detection zones will be recalibrated');
-            
-            // Display visual feedback to the user
-            if (this.ctx) {
-                const canvas = this.ctx.canvas;
-                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-                this.ctx.fillRect(0, 0, canvas.width, canvas.height);
-                
-                this.ctx.fillStyle = 'white';
-                this.ctx.font = 'bold 20px Arial';
-                this.ctx.textAlign = 'center';
-                this.ctx.fillText('Mirror setting changed', canvas.width/2, canvas.height/2 - 30);
-                this.ctx.fillText('Recalibrating hand tracking...', canvas.width/2, canvas.height/2 + 10);
-            }
-        }
+        // Always use mirrored mode regardless of the parameter
+        this.processingOptions.flipHorizontal = true;
+        console.debug('Hand tracking always uses mirror mode');
     }
     
     /**
@@ -383,54 +383,23 @@ export class HandTracking {
      */
     async processFrame() {
         // More detailed check for why processing might be skipped
-        if (!this.detector) {
-            console.warn('Processing skipped: detector not initialized yet');
-            
-            // If setup has been called but detector is still null, try to create it again
-            if (this.tfReady) {
-                console.debug('TensorFlow is ready but detector is null, attempting to initialize detector again...');
-                try {
-                    await this.setup();
-                    if (this.detector) {
-                        console.debug('Detector successfully initialized on retry!');
-                    }
-                } catch (error) {
-                    console.error('Failed to initialize detector on retry:', error.message);
-                }
-            }
-            
-            return null;
-        }
-        
-        if (!this.isRunning) {
-            console.debug('Processing skipped: tracking not running (isRunning=false)');
+        if (!this.ctx || !this.detector || !this.videoElement || !this.isRunning) {
+            console.debug('Skipping frame processing:', { 
+                hasContext: !!this.ctx,
+                hasDetector: !!this.detector,
+                hasVideo: !!this.videoElement,
+                isRunning: this.isRunning
+            });
             return null;
         }
         
         try {
-            // Check if we need to recalibrate after a mirror change
-            if (this.recalibrateAfterMirrorChange) {
-                console.debug('Recalibrating after mirror change');
-                this.recalibrateAfterMirrorChange = false;
-                
-                // We could perform specific recalibration steps here if needed
-                // For now, just clear previous hands data to avoid using outdated positions
-                this.lastFrameHands = { left: null, right: null };
-                this.hands = { left: null, right: null };
-                
-                // Show a recalibration message for one frame
-                if (this.ctx) {
-                    const canvas = this.ctx.canvas;
-                    this.ctx.clearRect(0, 0, canvas.width, canvas.height);
-                    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-                    this.ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    
-                    this.ctx.fillStyle = 'white';
-                    this.ctx.font = 'bold 24px Arial';
-                    this.ctx.textAlign = 'center';
-                    this.ctx.fillText('Recalibrated!', canvas.width/2, canvas.height/2);
-                }
-            }
+            // Debug info for tracking the process
+            console.debug('Processing frame - detailed debug:');
+            console.debug('- Canvas dimensions:', this.canvasElement.width, 'x', this.canvasElement.height);
+            console.debug('- Video dimensions:', this.videoElement.videoWidth, 'x', this.videoElement.videoHeight);
+            console.debug('- Mirror setting:', this.processingOptions.flipHorizontal);
+            console.debug('- Processing options:', JSON.stringify(this.processingOptions));
             
             // Draw a visual indicator that the frame processing is active
             this.drawDebugInfo();
@@ -466,13 +435,8 @@ export class HandTracking {
                 const modelHandedness = hand.handedness.toLowerCase();
                 let correctedHandedness;
                 
-                if (this.processingOptions.flipHorizontal) {
-                    // If mirrored, swap left/right as the user sees their hands mirrored
-                    correctedHandedness = modelHandedness === 'left' ? 'right' : 'left';
-                } else {
-                    // If not mirrored, use the model's handedness directly
-                    correctedHandedness = modelHandedness;
-                }
+                // Always using mirrored view, so we always swap the handedness
+                correctedHandedness = modelHandedness === 'left' ? 'right' : 'left';
                 
                 // Store the hand with the corrected handedness
                 this.hands[correctedHandedness] = hand;
@@ -525,13 +489,8 @@ export class HandTracking {
         const centerX = this.canvasElement.width / 2;
         const centerY = this.canvasElement.height / 2;
         
-        this.ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
-        this.ctx.beginPath();
-        this.ctx.moveTo(centerX - 50, centerY);
-        this.ctx.lineTo(centerX + 50, centerY);
-        this.ctx.moveTo(centerX, centerY - 50);
-        this.ctx.lineTo(centerX, centerY + 50);
-        this.ctx.stroke();
+        // Draw guitar layout indicators
+        this.drawGuitarLayoutIndicators();
         
         // Add text showing tracking is active
         this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
@@ -574,6 +533,192 @@ export class HandTracking {
             if (this.hands.right) {
                 this.ctx.fillText(`Right hand detected: ${Math.round(this.hands.right.score * 100)}% confidence`, centerX, textY);
             }
+        }
+    }
+    
+    /**
+     * Draw clear visual indicators for the guitar neck and belly areas
+     */
+    drawGuitarLayoutIndicators() {
+        const width = this.canvasElement.width;
+        const height = this.canvasElement.height;
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const timestamp = Date.now();
+        
+        // Since view is mirrored, the right side of screen is for left hand (neck)
+        // and left side of screen is for right hand (strumming area)
+        
+        // Create gradient for the guitar neck (right side in mirrored view)
+        const neckGradient = this.ctx.createLinearGradient(centerX, 0, width, 0);
+        neckGradient.addColorStop(0, 'rgba(139, 69, 19, 0.1)'); // Brown
+        neckGradient.addColorStop(1, 'rgba(139, 69, 19, 0.3)');
+        
+        // Create gradient for the guitar body (left side in mirrored view)
+        const bodyGradient = this.ctx.createLinearGradient(0, 0, centerX, 0);
+        bodyGradient.addColorStop(0, 'rgba(160, 82, 45, 0.3)'); // Sienna
+        bodyGradient.addColorStop(1, 'rgba(160, 82, 45, 0.1)');
+        
+        // Draw neck area (right side)
+        this.ctx.fillStyle = neckGradient;
+        this.ctx.fillRect(centerX, 100, width - centerX, height - 200);
+        
+        // Draw body/strumming area (left side)
+        this.ctx.fillStyle = bodyGradient; 
+        this.ctx.fillRect(0, 100, centerX, height - 200);
+        
+        // Draw guitar neck outline (right side) with pulsing effect when left hand detected
+        const leftHandPulse = this.hands.right ? 2 + Math.sin(timestamp / 200) * 2 : 4;
+        this.ctx.strokeStyle = this.hands.right ? 'rgba(0, 255, 0, 0.7)' : 'rgba(139, 69, 19, 0.7)';
+        this.ctx.lineWidth = leftHandPulse;
+        this.ctx.strokeRect(centerX, 100, width - centerX, height - 200);
+        
+        // Draw guitar body outline (left side) with pulsing effect when right hand detected
+        const rightHandPulse = this.hands.left ? 2 + Math.sin(timestamp / 200) * 2 : 4;
+        this.ctx.strokeStyle = this.hands.left ? 'rgba(0, 150, 255, 0.7)' : 'rgba(160, 82, 45, 0.7)';
+        this.ctx.lineWidth = rightHandPulse;
+        this.ctx.strokeRect(0, 100, centerX, height - 200);
+        
+        // Draw frets on the neck
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        this.ctx.lineWidth = 2;
+        const fretCount = 6;
+        const fretWidth = (width - centerX) / fretCount;
+        
+        for (let i = 1; i < fretCount; i++) {
+            const x = centerX + i * fretWidth;
+            this.ctx.beginPath();
+            this.ctx.moveTo(x, 100);
+            this.ctx.lineTo(x, height - 100);
+            this.ctx.stroke();
+        }
+        
+        // Draw strings on the neck with animation when left hand is forming chord
+        this.ctx.lineWidth = 1;
+        const stringCount = 6;
+        const stringSpacing = (height - 200) / (stringCount - 1);
+        
+        for (let i = 0; i < stringCount; i++) {
+            const y = 100 + i * stringSpacing;
+            this.ctx.beginPath();
+            this.ctx.moveTo(centerX, y);
+            this.ctx.lineTo(width, y);
+            
+            // Make strings more visible when left hand is detected (forming chords)
+            if (this.hands.right) {
+                const vibration = Math.sin(timestamp / 100 + i * 5) * 2;
+                const animatedY = y + vibration;
+                this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+                this.ctx.lineWidth = 1.5;
+                
+                this.ctx.beginPath();
+                this.ctx.moveTo(centerX, animatedY);
+                this.ctx.lineTo(width, animatedY);
+            } else {
+                this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+                this.ctx.lineWidth = 1;
+            }
+            
+            this.ctx.stroke();
+        }
+        
+        // Draw animated strumming area with motion when right hand is strumming
+        this.ctx.strokeStyle = this.hands.left ? 'rgba(0, 200, 255, 0.7)' : 'rgba(255, 255, 255, 0.5)';
+        this.ctx.lineWidth = this.hands.left ? 4 : 3;
+        
+        // Animate the sound hole when right hand is present
+        if (this.hands.left) {
+            // Multiple animated circles for strumming effect
+            for (let i = 0; i < 3; i++) {
+                const radius = Math.min(centerX, centerY) * (0.2 + (i * 0.1)) + Math.sin(timestamp / 300 + i) * 5;
+                this.ctx.beginPath();
+                this.ctx.arc(centerX * 0.5, centerY, radius, 0, Math.PI * 2);
+                this.ctx.stroke();
+            }
+            
+            // Add a strum line indicator
+            const strumY = centerY + Math.sin(timestamp / 150) * 50;
+            this.ctx.strokeStyle = 'rgba(0, 200, 255, 0.7)';
+            this.ctx.lineWidth = 2;
+            this.ctx.beginPath();
+            this.ctx.moveTo(centerX * 0.2, strumY);
+            this.ctx.lineTo(centerX * 0.8, strumY);
+            this.ctx.stroke();
+        } else {
+            // Just one static circle when no hand detected
+            this.ctx.beginPath();
+            this.ctx.arc(centerX * 0.5, centerY, Math.min(centerX, centerY) * 0.3, 0, Math.PI * 2);
+            this.ctx.stroke();
+        }
+        
+        // Add text labels for clarity
+        this.ctx.font = 'bold 20px Arial';
+        this.ctx.textAlign = 'center';
+        
+        // Guitar neck label (right side)
+        this.ctx.fillStyle = this.hands.right ? 'rgba(0, 255, 0, 0.9)' : 'rgba(255, 255, 255, 0.8)';
+        this.ctx.fillText('Guitar Neck (Left Hand)', centerX + (width - centerX) / 2, 80);
+        this.ctx.font = '16px Arial';
+        this.ctx.fillText('Form chord shapes here', centerX + (width - centerX) / 2, height - 80);
+        
+        // Guitar body label (left side)
+        this.ctx.font = 'bold 20px Arial';
+        this.ctx.fillStyle = this.hands.left ? 'rgba(0, 200, 255, 0.9)' : 'rgba(255, 255, 255, 0.8)';
+        this.ctx.fillText('Guitar Body (Right Hand)', centerX / 2, 80);
+        this.ctx.font = '16px Arial';
+        this.ctx.fillText('Strum here', centerX / 2, height - 80);
+        
+        // If a chord is detected, show it
+        if (this.lastDetectedChord && this.lastDetectedChord.name !== 'Unknown') {
+            this.ctx.font = 'bold 22px Arial';
+            this.ctx.fillStyle = 'rgba(255, 220, 120, 0.9)';
+            this.ctx.fillText(`Chord: ${this.lastDetectedChord.name}`, centerX + (width - centerX) / 2, height - 40);
+        }
+        
+        // If a strum is detected, show it
+        if (this.lastStrumDirection) {
+            this.ctx.font = 'bold 22px Arial';
+            this.ctx.fillStyle = 'rgba(0, 200, 255, 0.9)';
+            this.ctx.fillText(`Strum: ${this.lastStrumDirection}`, centerX / 2, height - 40);
+        }
+        
+        // Draw distance indicator line between hands when both are visible
+        if (this.hands.left && this.hands.right) {
+            const strumWrist = this.hands.left.keypoints[0];
+            const fretWrist = this.hands.right.keypoints[0];
+            
+            // Draw line connecting the two hands
+            this.ctx.strokeStyle = 'rgba(255, 255, 0, 0.6)';
+            this.ctx.lineWidth = 3;
+            this.ctx.setLineDash([5, 5]); // Create dashed line
+            this.ctx.beginPath();
+            this.ctx.moveTo(strumWrist.x, strumWrist.y);
+            this.ctx.lineTo(fretWrist.x, fretWrist.y);
+            this.ctx.stroke();
+            this.ctx.setLineDash([]); // Reset to solid line
+            
+            // Calculate distance
+            const distance = Math.sqrt(
+                Math.pow(strumWrist.x - fretWrist.x, 2) + 
+                Math.pow(strumWrist.y - fretWrist.y, 2)
+            );
+            
+            // Draw a helpful text indicator about pitch/fret relationship
+            this.ctx.font = '14px Arial';
+            this.ctx.fillStyle = 'rgba(255, 255, 0, 0.9)';
+            const midX = (strumWrist.x + fretWrist.x) / 2;
+            const midY = (strumWrist.y + fretWrist.y) / 2 - 20;
+            
+            // Get pitch information - closer hands = higher pitch
+            // Calculate approximate fret based on hand distance
+            const canvas = this.canvasElement;
+            const maxDistance = Math.sqrt(canvas.width * canvas.width + canvas.height * canvas.height);
+            const normalizedDistance = Math.min(1, distance / (maxDistance * 0.7));
+            const approxFret = Math.min(12, Math.max(0, Math.round((1 - normalizedDistance) * 12)));
+            
+            this.ctx.fillText(`Distance: ${Math.round(distance)}px`, midX, midY);
+            this.ctx.fillText(`Fret: ~${approxFret}`, midX, midY + 20);
+            this.ctx.fillText(`(Closer = Higher Pitch)`, midX, midY + 40);
         }
     }
     
@@ -865,25 +1010,10 @@ export class HandTracking {
      * @returns {Object|null} Information about the strumming motion if detected
      */
     detectStrummingMotion() {
-        // Determine which hand to use for strumming based on mirror setting
-        const strummingHandType = this.processingOptions.flipHorizontal ? 'left' : 'right';
+        // Right hand is always used for strumming (appears on left side of mirrored view)
+        const strummingHandType = 'left'; // In mirrored view, left hand is user's right hand
         const strummingHand = this.hands[strummingHandType];
         const prevStrummingHand = this.lastFrameHands[strummingHandType];
-        
-        // Debug info for hand detection
-        /*
-        if (strummingHand) {
-            console.debug(`Strumming hand (${strummingHandType}) detected`);
-        } else {
-            console.debug(`Strumming hand (${strummingHandType}) not detected`);
-            return null;
-        }
-        
-        if (!prevStrummingHand) {
-            console.debug('Previous frame strumming hand not detected, waiting for more frames');
-            return null;
-        }
-        */
         
         if (!strummingHand || !prevStrummingHand) return null;
         
@@ -894,22 +1024,30 @@ export class HandTracking {
         // Calculate vertical movement (Y-axis)
         const yMovement = wrist.y - prevWrist.y;
         
-        // Debug info for movement
-        // console.debug(`Vertical movement: ${yMovement.toFixed(2)}px`);
-        
         // Detect strumming motion (significant vertical movement)
-        const STRUM_THRESHOLD = 25; // Increased from 15 to make strumming less sensitive
+        const STRUM_THRESHOLD = 12; // Reduced from 25 to make strumming more sensitive
         
         if (Math.abs(yMovement) > STRUM_THRESHOLD) {
-            // Now that we've fixed the coordinate system, up/down directions are correct
-            // Positive Y movement means moving down on the screen, negative means moving up
+            const direction = yMovement > 0 ? 'down' : 'up';
             const strumInfo = {
-                direction: yMovement > 0 ? 'down' : 'up',
+                direction: direction,
                 intensity: Math.abs(yMovement) / 50, // Normalize between 0-1 (approximate)
                 position: wrist
             };
             
-            // console.debug(`STRUM DETECTED! Direction: ${strumInfo.direction}, Intensity: ${strumInfo.intensity.toFixed(2)}`);
+            // Save the strum direction for visual feedback
+            this.lastStrumDirection = direction;
+            
+            // Clear any existing timeout
+            if (this.strumDisplayTimeout) {
+                clearTimeout(this.strumDisplayTimeout);
+            }
+            
+            // Set a timeout to clear the strum direction after 1 second
+            this.strumDisplayTimeout = setTimeout(() => {
+                this.lastStrumDirection = null;
+            }, 1000);
+            
             return strumInfo;
         }
         
@@ -921,8 +1059,8 @@ export class HandTracking {
      * @returns {Object|null} Information about the detected chord
      */
     detectChordFormation() {
-        // Determine which hand to use for chord formation based on mirror setting
-        const chordHandType = this.processingOptions.flipHorizontal ? 'right' : 'left';
+        // Left hand is always used for chord formation (appears on right side of mirrored view)
+        const chordHandType = 'right'; // In mirrored view, right hand is user's left hand
         const chordHand = this.hands[chordHandType];
         
         if (!chordHand) return null;
@@ -946,16 +1084,21 @@ export class HandTracking {
         const pinkyToThumb = this.calculateDistance(pinkyTip, thumbTip);
         
         // Simple chord detection based on finger patterns
+        let chord = { name: 'Unknown', confidence: 0.3 };
+        
         // This is just a placeholder - real implementation would be more sophisticated
         if (indexToThumb < 50 && middleToThumb > 80 && ringToThumb > 80) {
-            return { name: 'C Major', confidence: 0.7 };
+            chord = { name: 'C Major', confidence: 0.7 };
         } else if (indexToThumb > 80 && middleToThumb < 50 && ringToThumb > 80) {
-            return { name: 'G Major', confidence: 0.6 };
+            chord = { name: 'G Major', confidence: 0.6 };
         } else if (indexToThumb > 80 && middleToThumb > 80 && ringToThumb < 50) {
-            return { name: 'E Minor', confidence: 0.65 };
+            chord = { name: 'E Minor', confidence: 0.65 };
         }
         
-        return { name: 'Unknown', confidence: 0.3 };
+        // Save the detected chord for visual feedback
+        this.lastDetectedChord = chord;
+        
+        return chord;
     }
     
     /**
@@ -1168,43 +1311,90 @@ export class HandTracking {
      * Draw calibration instructions on the canvas
      */
     drawCalibrationInstructions() {
-        // Clear the canvas
-        this.ctx.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
-        
         const centerX = this.canvasElement.width / 2;
         const centerY = this.canvasElement.height / 2;
+        const width = this.canvasElement.width;
+        const height = this.canvasElement.height;
         
-        // Draw semi-transparent background
+        // Clear canvas
+        this.ctx.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
+        
+        // Background for instructions
         this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
         this.ctx.fillRect(0, 0, this.canvasElement.width, this.canvasElement.height);
         
-        // Draw title
-        this.ctx.fillStyle = 'white';
-        this.ctx.font = '24px Arial';
-        this.ctx.textAlign = 'center';
-        this.ctx.fillText('Hand Tracking Calibration', centerX, 60);
+        // Draw basic guitar layout
+        // Neck area (right side)
+        this.ctx.fillStyle = 'rgba(139, 69, 19, 0.3)'; // Brown
+        this.ctx.fillRect(centerX, 150, width - centerX, height - 300);
+        this.ctx.strokeStyle = 'rgba(139, 69, 19, 0.7)';
+        this.ctx.lineWidth = 4;
+        this.ctx.strokeRect(centerX, 150, width - centerX, height - 300);
         
-        // Draw instructions
-        this.ctx.font = '18px Arial';
-        this.ctx.fillText('Please position both hands in front of the camera', centerX, centerY - 40);
-        this.ctx.fillText('Left hand: form chord shapes', centerX, centerY);
-        this.ctx.fillText('Right hand: perform strumming motions', centerX, centerY + 40);
+        // Body area (left side)
+        this.ctx.fillStyle = 'rgba(160, 82, 45, 0.3)'; // Sienna
+        this.ctx.fillRect(0, 150, centerX, height - 300);
+        this.ctx.strokeStyle = 'rgba(160, 82, 45, 0.7)';
+        this.ctx.lineWidth = 4;
+        this.ctx.strokeRect(0, 150, centerX, height - 300);
         
-        // Draw hand position guides
-        this.ctx.strokeStyle = 'rgba(0, 255, 0, 0.7)';
+        // Draw a few frets
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
         this.ctx.lineWidth = 2;
+        for (let i = 1; i < 4; i++) {
+            const x = centerX + i * ((width - centerX) / 4);
+            this.ctx.beginPath();
+            this.ctx.moveTo(x, 150);
+            this.ctx.lineTo(x, height - 150);
+            this.ctx.stroke();
+        }
         
-        // Left hand guide
+        // Draw a few strings
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        for (let i = 0; i < 6; i++) {
+            const y = 150 + i * ((height - 300) / 5);
+            this.ctx.beginPath();
+            this.ctx.moveTo(centerX, y);
+            this.ctx.lineTo(width, y);
+            this.ctx.stroke();
+        }
+        
+        // Draw sound hole
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
         this.ctx.beginPath();
-        this.ctx.ellipse(
-            this.canvasElement.width * 0.25, 
-            centerY, 
-            80, 100, 0, 0, Math.PI * 2
-        );
+        this.ctx.arc(centerX * 0.5, centerY, 70, 0, Math.PI * 2);
         this.ctx.stroke();
-        this.ctx.fillText('Left', this.canvasElement.width * 0.25, centerY - 120);
         
-        // Right hand guide
+        // Title
+        this.ctx.fillStyle = 'white';
+        this.ctx.font = 'bold 24px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('Air Guitar - Hand Positioning Guide', centerX, 60);
+        
+        // Draw instructions with better visual distinction
+        this.ctx.font = '18px Arial';
+        this.ctx.fillText('Your view is mirrored like a mirror', centerX, 110);
+        
+        // Left hand instructions (right side of screen)
+        this.ctx.font = 'bold 20px Arial';
+        this.ctx.fillStyle = 'rgba(255, 220, 120, 0.9)';
+        this.ctx.fillText('GUITAR NECK', centerX + (width - centerX) / 2, 130);
+        this.ctx.font = '18px Arial';
+        this.ctx.fillStyle = 'white';
+        this.ctx.fillText('Left hand forms chord shapes here', centerX + (width - centerX) / 2, height - 130);
+        
+        // Right hand instructions (left side of screen)
+        this.ctx.font = 'bold 20px Arial';
+        this.ctx.fillStyle = 'rgba(255, 220, 120, 0.9)';
+        this.ctx.fillText('GUITAR BODY', centerX / 2, 130);
+        this.ctx.font = '18px Arial';
+        this.ctx.fillStyle = 'white';
+        this.ctx.fillText('Right hand strums here', centerX / 2, height - 130);
+        
+        // Draw hand position guides with clear labels
+        // Left hand guide (on right side in mirrored view)
+        this.ctx.strokeStyle = 'rgba(0, 255, 0, 0.7)';
+        this.ctx.lineWidth = 3;
         this.ctx.beginPath();
         this.ctx.ellipse(
             this.canvasElement.width * 0.75, 
@@ -1212,7 +1402,76 @@ export class HandTracking {
             80, 100, 0, 0, Math.PI * 2
         );
         this.ctx.stroke();
-        this.ctx.fillText('Right', this.canvasElement.width * 0.75, centerY - 120);
+        
+        // Add a hand icon or clear indicator
+        this.ctx.fillStyle = 'rgba(0, 255, 0, 0.3)';
+        this.ctx.fill();
+        this.ctx.fillStyle = 'white';
+        this.ctx.font = 'bold 16px Arial';
+        this.ctx.fillText('LEFT HAND', this.canvasElement.width * 0.75, centerY);
+        
+        // Right hand guide (on left side in mirrored view)
+        this.ctx.strokeStyle = 'rgba(0, 150, 255, 0.7)';
+        this.ctx.lineWidth = 3;
+        this.ctx.beginPath();
+        this.ctx.ellipse(
+            this.canvasElement.width * 0.25, 
+            centerY, 
+            80, 100, 0, 0, Math.PI * 2
+        );
+        this.ctx.stroke();
+        
+        // Add a hand icon or clear indicator
+        this.ctx.fillStyle = 'rgba(0, 150, 255, 0.3)';
+        this.ctx.fill();
+        this.ctx.fillStyle = 'white';
+        this.ctx.font = 'bold 16px Arial';
+        this.ctx.fillText('RIGHT HAND', this.canvasElement.width * 0.25, centerY);
+        
+        // Draw distance indicator between hands
+        this.ctx.strokeStyle = 'rgba(255, 255, 0, 0.6)';
+        this.ctx.lineWidth = 2;
+        this.ctx.setLineDash([5, 5]); // Create dashed line
+        this.ctx.beginPath();
+        this.ctx.moveTo(this.canvasElement.width * 0.25, centerY);
+        this.ctx.lineTo(this.canvasElement.width * 0.75, centerY);
+        this.ctx.stroke();
+        this.ctx.setLineDash([]); // Reset to solid line
+        
+        // Add distance explanation for pitch control
+        this.ctx.fillStyle = 'rgba(255, 255, 0, 0.9)';
+        this.ctx.font = 'bold 18px Arial';
+        this.ctx.fillText('Hand Distance = Pitch Control', centerX, centerY - 80);
+        
+        // Add explanatory text
+        this.ctx.font = '16px Arial';
+        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        this.ctx.fillText('Hands far apart = low pitch (open strings)', centerX, centerY - 50);
+        this.ctx.fillText('Hands close together = high pitch (high frets)', centerX, centerY - 25);
+        
+        // Add example arrows for hand distance
+        this.ctx.fillStyle = 'rgba(255, 255, 0, 0.6)';
+        // Low pitch arrow
+        this.ctx.beginPath();
+        this.ctx.moveTo(centerX * 0.85, centerY + 30);
+        this.ctx.lineTo(centerX * 0.95, centerY + 50);
+        this.ctx.lineTo(centerX * 0.75, centerY + 50);
+        this.ctx.fill();
+        // High pitch arrow
+        this.ctx.beginPath();
+        this.ctx.moveTo(centerX * 1.15, centerY + 30);
+        this.ctx.lineTo(centerX * 1.05, centerY + 50);
+        this.ctx.lineTo(centerX * 1.25, centerY + 50);
+        this.ctx.fill();
+        
+        // Arrow labels
+        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        this.ctx.font = '14px Arial';
+        this.ctx.fillText('Move away for', centerX * 0.85, centerY + 70);
+        this.ctx.fillText('lower notes', centerX * 0.85, centerY + 90);
+        
+        this.ctx.fillText('Move closer for', centerX * 1.15, centerY + 70);
+        this.ctx.fillText('higher notes', centerX * 1.15, centerY + 90);
     }
 
     /**

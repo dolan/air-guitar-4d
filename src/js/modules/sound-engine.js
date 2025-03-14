@@ -44,7 +44,7 @@ export class SoundEngine {
         this.currentChord = null;
         this.isMuted = false;
         this.lastStrumTime = 0;
-        this.strumCooldownMs = 150; // Increased from 80ms to prevent polyphony issues
+        this.strumCooldownMs = 60; // Reduced from 150ms to allow for faster strumming
     }
     
     /**

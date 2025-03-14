@@ -24,7 +24,6 @@ class AirGuitarApp {
             cameraSelect: document.getElementById('camera-select'),
             cameraStatus: document.getElementById('camera-status'),
             audioStatus: document.getElementById('audio-status'),
-            mirrorToggle: document.getElementById('mirror-toggle'),
             planeAngleSlider: document.getElementById('plane-angle-slider'),
             planeAngleValue: document.getElementById('plane-angle-value'),
             // Effects controls
@@ -60,6 +59,11 @@ class AirGuitarApp {
             // Initialize modules
             this.webcamHandler = new WebcamHandler(this.elements.video);
             this.handTracking = new HandTracking(this.elements.video, this.elements.overlay);
+            
+            // Ensure mirroring is always enabled (though it should be by default)
+            this.webcamHandler.setMirrored(true);
+            this.handTracking.setMirrored(true);
+            
             this.motionAnalysis = new MotionAnalysis();
             this.soundEngine = new SoundEngine();
             this.uiFeedback = new UIFeedback(this.elements.overlay);
@@ -149,15 +153,31 @@ class AirGuitarApp {
                 return;
             }
 
+            console.log('Starting camera setup...');
             const success = await this.webcamHandler.setup();
             
             if (success) {
                 this.elements.startCameraBtn.textContent = 'Stop Camera';
                 this.elements.startCameraBtn.disabled = false;
                 this.elements.cameraSelect.disabled = true;
-                this.setCameraStatus(''); // Clear status message
+                this.setCameraStatus('Camera started'); // Show status message
+                
+                console.log('Camera setup successful, initializing hand tracking...');
+                
+                // Ensure mirroring is set correctly
+                this.webcamHandler.setMirrored(true);
+                
+                // Initialize hand tracking if needed
+                try {
+                    await this.handTracking.setup();
+                    console.log('Hand tracking initialized successfully');
+                } catch (handTrackingError) {
+                    console.error('Error setting up hand tracking:', handTrackingError);
+                    this.setCameraStatus('Camera started, but hand tracking failed to initialize');
+                }
                 
                 // Start the video processing
+                console.log('Starting video processing...');
                 this.startProcessing();
             } else {
                 throw new Error('Failed to initialize camera');
@@ -216,13 +236,32 @@ class AirGuitarApp {
      * Process each video frame
      */
     async processVideoFrame() {
-        if (!this.processingActive) return;
+        if (!this.processingActive) {
+            console.debug('Processing not active, stopping frame processing');
+            return;
+        }
         
         try {
+            // Verify that all components are ready
+            if (!this.handTracking || !this.handTracking.isRunning) {
+                console.debug('Hand tracking not ready, attempting to initialize...');
+                if (this.handTracking) {
+                    try {
+                        await this.handTracking.setup();
+                        console.debug('Hand tracking initialized in processVideoFrame');
+                    } catch (setupError) {
+                        console.error('Failed to initialize hand tracking in processVideoFrame:', setupError);
+                    }
+                }
+            }
+            
             // Process the frame with hand tracking
+            console.debug('Processing frame...');
             const handData = await this.handTracking.processFrame();
             
             if (handData) {
+                console.debug('Hand data received:', Object.keys(handData).filter(k => handData[k]));
+                
                 // Check for strumming motion
                 const strummingMotion = this.handTracking.detectStrummingMotion();
                 
@@ -242,9 +281,19 @@ class AirGuitarApp {
                 if (motionResult && motionResult.strumDetected) {
                     this.soundEngine.playStrum(motionResult);
                 }
+            } else {
+                console.debug('No hand data received from processFrame');
             }
         } catch (error) {
             console.error("Error in frame processing:", error);
+            
+            // Don't stop processing due to errors, just log and continue
+            if (this.handTracking) {
+                console.debug('Checking hand tracking state:', {
+                    isRunning: this.handTracking.isRunning,
+                    detector: !!this.handTracking.detector
+                });
+            }
         }
         
         // Request next frame
@@ -277,20 +326,6 @@ class AirGuitarApp {
         this.elements.guitarType.addEventListener('change', (event) => {
             if (this.soundEngine) {
                 this.soundEngine.setGuitarType(event.target.value);
-            }
-        });
-        
-        // Mirror toggle
-        this.elements.mirrorToggle.addEventListener('change', (event) => {
-            if (this.webcamHandler) {
-                this.webcamHandler.setMirrored(event.target.checked);
-                
-                // Update processing options for hand tracking
-                if (this.handTracking) {
-                    this.handTracking.setMirrored(event.target.checked);
-                }
-                
-                console.debug(`Mirror view ${event.target.checked ? 'enabled' : 'disabled'}`);
             }
         });
         

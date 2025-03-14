@@ -12,7 +12,7 @@ export class MotionAnalysis {
         
         // Calibration thresholds
         this.strumThreshold = 25; // Minimum pixels movement to consider as strumming
-        this.strumCooldown = 400; // Milliseconds to wait between strums
+        this.strumCooldown = 120; // Milliseconds to wait between strums (reduced from 400ms)
         this.lastStrumTime = 0;
         
         // Track detected patterns
@@ -21,6 +21,13 @@ export class MotionAnalysis {
         
         // For note positioning on virtual fretboard
         this.fretboardPositions = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+        
+        // Motion smoothing filters
+        this.handPositions = {
+            left: { x: [], y: [] },
+            right: { x: [], y: [] }
+        };
+        this.smoothingWindow = 3; // Number of frames to average for smoothing
         
         // Callbacks
         this.onStrumDetected = null;
@@ -97,23 +104,46 @@ export class MotionAnalysis {
             }
         }
         
-        // Analyze left hand position for fret position
-        if (handData.left) {
-            // Use hand Y position to determine fret position
-            // This is a simplified approach - real implementation would be more complex
-            const wristY = handData.left.keypoints[0].y; // Wrist landmark
+        // Determine fret position based on distance between hands
+        // When hands are far apart (normal playing position), fret position is low (open strings)
+        // When fret hand moves closer to strumming hand, fret position increases (higher up the neck)
+        if (handData.left && handData.right) {
+            // Get wrist positions for both hands and apply smoothing
+            const rawStrumWrist = handData.left.keypoints[0]; // Left hand in the mirrored view (right hand in reality)
+            const rawFretWrist = handData.right.keypoints[0]; // Right hand in the mirrored view (left hand in reality)
             
-            // Map Y position to fret (0-12)
-            // Assuming screen coordinate system where top = 0, bottom = canvas height
-            const canvasHeight = document.getElementById('overlay').height;
-            const relativeY = wristY / canvasHeight;
+            // Apply smoothing filter for more stable positions
+            const strumWrist = this.smoothMotion('left', rawStrumWrist);
+            const fretWrist = this.smoothMotion('right', rawFretWrist);
             
-            // Map relative Y position (0-1) to fret positions (0-12)
-            // Reverse the mapping so that higher up on screen = higher fret number
-            const fretPosition = Math.min(12, Math.max(0, Math.round((1 - relativeY) * 12)));
+            // Calculate distance between hands (using smoothed positions)
+            const distance = Math.sqrt(
+                Math.pow(strumWrist.x - fretWrist.x, 2) + 
+                Math.pow(strumWrist.y - fretWrist.y, 2)
+            );
+            
+            // Get canvas dimensions for normalization
+            const canvas = document.getElementById('overlay');
+            const canvasWidth = canvas.width;
+            const canvasHeight = canvas.height;
+            const maxPossibleDistance = Math.sqrt(canvasWidth * canvasWidth + canvasHeight * canvasHeight);
+            
+            // Normalize distance to 0-1 range
+            const normalizedDistance = Math.min(1, distance / (maxPossibleDistance * 0.7));
+            
+            // Calculate fret position (0-12) based on normalized distance
+            // When hands are close, fret position is high
+            // When hands are far apart, fret position is low
+            const fretPosition = Math.min(12, Math.max(0, Math.round((1 - normalizedDistance) * 12)));
+            
+            console.debug(`Hand distance: ${distance.toFixed(2)}px, Normalized: ${normalizedDistance.toFixed(2)}, Fret position: ${fretPosition}`);
             
             this.lastFretPosition = fretPosition;
             result.fretPosition = fretPosition;
+        } else if (handData.left) {
+            // Only strumming hand visible - keep the last fret position
+            // This allows playing while moving the strumming hand without losing fret position
+            result.fretPosition = this.lastFretPosition;
         }
         
         // Process strumming motion (right hand)
@@ -122,7 +152,7 @@ export class MotionAnalysis {
             
             // Check if we've passed the cooldown period to prevent multiple strums
             if (now - this.lastStrumTime > this.strumCooldown) {
-                // console.debug(`Strum detected! Direction: ${strummingMotion.direction}, Time since last strum: ${now - this.lastStrumTime}ms`);
+                console.debug(`Strum detected! Direction: ${strummingMotion.direction}, Time since last strum: ${now - this.lastStrumTime}ms`);
                 
                 result.strumDetected = true;
                 result.strumDirection = strummingMotion.direction;
@@ -138,7 +168,7 @@ export class MotionAnalysis {
                     // console.warn('No strum callback registered!');
                 }
             } else {
-                // console.debug(`Strum cooldown active. Time since last strum: ${now - this.lastStrumTime}ms`);
+                console.debug(`Strum cooldown active. Time since last strum: ${now - this.lastStrumTime}ms`);
             }
         }
         
@@ -166,6 +196,34 @@ export class MotionAnalysis {
     }
     
     /**
+     * Apply smoothing filter to hand motion data
+     * @param {string} hand - 'left' or 'right' hand
+     * @param {Object} position - Position with x and y coordinates
+     * @returns {Object} Smoothed position
+     */
+    smoothMotion(hand, position) {
+        if (!position) return null;
+        
+        // Add current position to the history
+        this.handPositions[hand].x.push(position.x);
+        this.handPositions[hand].y.push(position.y);
+        
+        // Keep only the most recent positions within the smoothing window
+        if (this.handPositions[hand].x.length > this.smoothingWindow) {
+            this.handPositions[hand].x.shift();
+            this.handPositions[hand].y.shift();
+        }
+        
+        // Calculate the average position
+        const smoothedX = this.handPositions[hand].x.reduce((sum, val) => sum + val, 0) / 
+                         this.handPositions[hand].x.length;
+        const smoothedY = this.handPositions[hand].y.reduce((sum, val) => sum + val, 0) / 
+                         this.handPositions[hand].y.length;
+        
+        return { x: smoothedX, y: smoothedY };
+    }
+    
+    /**
      * Reset the analysis state
      */
     reset() {
@@ -173,5 +231,11 @@ export class MotionAnalysis {
         this.lastDetectedChord = null;
         this.lastFretPosition = 0;
         this.lastStrumTime = 0;
+        
+        // Clear smoothing buffers
+        this.handPositions = {
+            left: { x: [], y: [] },
+            right: { x: [], y: [] }
+        };
     }
 } 
