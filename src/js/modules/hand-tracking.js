@@ -871,6 +871,7 @@ export class HandTracking {
         const prevStrummingHand = this.lastFrameHands[strummingHandType];
         
         // Debug info for hand detection
+        /*
         if (strummingHand) {
             console.debug(`Strumming hand (${strummingHandType}) detected`);
         } else {
@@ -882,6 +883,9 @@ export class HandTracking {
             console.debug('Previous frame strumming hand not detected, waiting for more frames');
             return null;
         }
+        */
+        
+        if (!strummingHand || !prevStrummingHand) return null;
         
         // Get the wrist position
         const wrist = strummingHand.keypoints[FINGER_LANDMARKS.WRIST];
@@ -891,10 +895,10 @@ export class HandTracking {
         const yMovement = wrist.y - prevWrist.y;
         
         // Debug info for movement
-        console.debug(`Vertical movement: ${yMovement.toFixed(2)}px`);
+        // console.debug(`Vertical movement: ${yMovement.toFixed(2)}px`);
         
         // Detect strumming motion (significant vertical movement)
-        const STRUM_THRESHOLD = 15; // Minimum pixels to consider as strumming
+        const STRUM_THRESHOLD = 25; // Increased from 15 to make strumming less sensitive
         
         if (Math.abs(yMovement) > STRUM_THRESHOLD) {
             // Now that we've fixed the coordinate system, up/down directions are correct
@@ -905,7 +909,7 @@ export class HandTracking {
                 position: wrist
             };
             
-            console.debug(`STRUM DETECTED! Direction: ${strumInfo.direction}, Intensity: ${strumInfo.intensity.toFixed(2)}`);
+            // console.debug(`STRUM DETECTED! Direction: ${strumInfo.direction}, Intensity: ${strumInfo.intensity.toFixed(2)}`);
             return strumInfo;
         }
         

@@ -44,7 +44,7 @@ export class SoundEngine {
         this.currentChord = null;
         this.isMuted = false;
         this.lastStrumTime = 0;
-        this.strumCooldownMs = 80; // Minimum time between strums
+        this.strumCooldownMs = 150; // Increased from 80ms to prevent polyphony issues
     }
     
     /**
@@ -82,7 +82,7 @@ export class SoundEngine {
      * Initialize the complete audio chain
      */
     initializeAudioChain() {
-        console.debug('Initializing audio chain...');
+        // console.debug('Initializing audio chain...');
         
         // Create master volume control
         this.master = new Tone.Volume(this.volume * 2 - 2).toDestination(); // Convert 0-1 to dB (-2 to 0)
@@ -93,7 +93,7 @@ export class SoundEngine {
         // Create synthesizer based on guitar type
         this.configureSynthForGuitarType(this.guitarType);
         
-        console.debug('Audio chain initialized successfully. Synth ready:', !!this.synth, 'PolySynth ready:', !!this.polySynth);
+        // console.debug('Audio chain initialized successfully. Synth ready:', !!this.synth, 'PolySynth ready:', !!this.polySynth);
     }
     
     /**
@@ -150,10 +150,10 @@ export class SoundEngine {
                     resonance: 0.95
                 });
                 
-                // Poly synth for chords
-                this.polySynth = new Tone.PolySynth({
-                    voice: Tone.MonoSynth,
-                    options: {
+                // Poly synth for chords - increase maxPolyphony to 10 (from default 4)
+                this.polySynth = new Tone.PolySynth(Tone.MonoSynth, {
+                    maxPolyphony: 10,
+                    voice: {
                         oscillator: {
                             type: 'square'
                         },
@@ -195,10 +195,10 @@ export class SoundEngine {
                     }
                 });
                 
-                // Poly synth for bass
-                this.polySynth = new Tone.PolySynth({
-                    voice: Tone.MonoSynth,
-                    options: {
+                // Poly synth for bass - increase maxPolyphony to 10
+                this.polySynth = new Tone.PolySynth(Tone.MonoSynth, {
+                    maxPolyphony: 10,
+                    voice: {
                         oscillator: {
                             type: 'triangle'
                         },
@@ -236,10 +236,10 @@ export class SoundEngine {
                     resonance: 0.9
                 });
                 
-                // Poly synth for chords
-                this.polySynth = new Tone.PolySynth({
-                    voice: Tone.MonoSynth,
-                    options: {
+                // Poly synth for chords - increase maxPolyphony to 10
+                this.polySynth = new Tone.PolySynth(Tone.MonoSynth, {
+                    maxPolyphony: 10,
+                    voice: {
                         oscillator: {
                             type: 'triangle'
                         },
@@ -338,23 +338,23 @@ export class SoundEngine {
     playStrum(motionData) {
         try {
             if (!this.initialized) {
-                console.warn('Skipping strum: sound engine not initialized');
+                // console.warn('Skipping strum: sound engine not initialized');
                 return;
             }
             
             if (this.isMuted) {
-                console.debug('Skipping strum: sound engine is muted');
+                // console.debug('Skipping strum: sound engine is muted');
                 return;
             }
             
             if (!this.polySynth) {
-                console.error('Cannot play strum: polySynth not initialized');
+                // console.error('Cannot play strum: polySynth not initialized');
                 return;
             }
             
             const now = Date.now();
             if (now - this.lastStrumTime < this.strumCooldownMs) {
-                console.debug(`Strum cooldown active (${this.strumCooldownMs}ms). Time since last strum: ${now - this.lastStrumTime}ms`);
+                // console.debug(`Strum cooldown active (${this.strumCooldownMs}ms). Time since last strum: ${now - this.lastStrumTime}ms`);
                 return; // Prevent strumming too frequently
             }
             this.lastStrumTime = now;
@@ -369,7 +369,7 @@ export class SoundEngine {
             } = motionData;
             
             if (!strumDetected) {
-                console.debug('No strum detected in motion data');
+                // console.debug('No strum detected in motion data');
                 return;
             }
             
@@ -379,34 +379,54 @@ export class SoundEngine {
             const chordNotes = this.getChordNotes(chordType, fretPosition);
             
             if (!chordNotes || chordNotes.length === 0) {
-                console.error(`No notes found for chord: ${chordType} at fret ${fretPosition}`);
+                // console.error(`No notes found for chord: ${chordType} at fret ${fretPosition}`);
                 return;
             }
             
-            console.debug(`Chord notes: ${chordNotes.join(', ')}`);
+            // console.debug(`Chord notes: ${chordNotes.join(', ')}`);
             
             // Calculate velocity based on strum intensity (0.5-1.0 range)
             const velocity = 0.5 + (strumIntensity * 0.5);
             
-            // Play the chord
-            if (strumDirection === 'down') {
-                // Downstrum - play from low string to high string with slight delay
-                const now = Tone.now();
-                const staggerTime = 0.01; // 10ms between string hits
+            // Make sure we have a fresh Tone.js time object
+            const toneNow = Tone.now();
+            const staggerTime = 0.01; // 10ms between string hits
+            const noteDuration = "8n"; // eighth note duration
+            
+            try {
+                // Play the chord
+                if (strumDirection === 'down') {
+                    // Downstrum - play from low string to high string with slight delay
+                    chordNotes.forEach((note, index) => {
+                        this.polySynth.triggerAttackRelease(
+                            note, 
+                            noteDuration, 
+                            toneNow + (index * staggerTime), 
+                            velocity
+                        );
+                    });
+                    // console.debug('Played downstrum');
+                } else {
+                    // Upstrum - play from high string to low string with slight delay
+                    [...chordNotes].reverse().forEach((note, index) => {
+                        this.polySynth.triggerAttackRelease(
+                            note, 
+                            noteDuration, 
+                            toneNow + (index * staggerTime), 
+                            velocity
+                        );
+                    });
+                    // console.debug('Played upstrum');
+                }
+            } catch (noteError) {
+                console.error('Error playing notes:', noteError.message);
                 
-                chordNotes.forEach((note, index) => {
-                    this.polySynth.triggerAttackRelease(note, "8n", now + (index * staggerTime), velocity);
-                });
-                console.debug('Played downstrum');
-            } else {
-                // Upstrum - play from high string to low string with slight delay
-                const now = Tone.now();
-                const staggerTime = 0.01; // 10ms between string hits
-                
-                [...chordNotes].reverse().forEach((note, index) => {
-                    this.polySynth.triggerAttackRelease(note, "8n", now + (index * staggerTime), velocity);
-                });
-                console.debug('Played upstrum');
+                // Try a fallback approach - play the chord all at once
+                try {
+                    this.polySynth.triggerAttackRelease(chordNotes, noteDuration, toneNow, velocity);
+                } catch (fallbackError) {
+                    console.error('Fallback play also failed:', fallbackError.message);
+                }
             }
         } catch (error) {
             console.error('Error playing strum:', error);
@@ -486,9 +506,9 @@ export class SoundEngine {
         }
         
         try {
-            // Check if synth is available
-            if (!this.synth) {
-                console.error('Cannot play test sound: synth not initialized');
+            // Check if synth and polySynth are available
+            if (!this.synth || !this.polySynth) {
+                console.error('Cannot play test sound: synthesizers not initialized');
                 return;
             }
             
@@ -498,10 +518,22 @@ export class SoundEngine {
             const chord = this.getChordNotes('E', 0);
             const now = Tone.now();
             
-            // Play each note with a slight delay
+            // First test the single synth (individual notes with delay)
             chord.forEach((note, index) => {
                 this.synth.triggerAttackRelease(note, "8n", now + (index * 0.1), 0.7);
             });
+            
+            // Then test the poly synth (full chord) after a delay
+            setTimeout(() => {
+                try {
+                    const now = Tone.now();
+                    // Play the full chord with the polySynth
+                    this.polySynth.triggerAttackRelease(chord, "4n", now, 0.7);
+                    console.debug('PolySynth test sound played');
+                } catch (polyError) {
+                    console.error('Error testing polySynth:', polyError);
+                }
+            }, 1000); // Wait 1 second before playing the chord
             
             console.debug('Test sound played');
         } catch (error) {

@@ -11,8 +11,8 @@ export class MotionAnalysis {
         this.lastHandData = null;
         
         // Calibration thresholds
-        this.strumThreshold = 15; // Minimum pixels movement to consider as strumming
-        this.strumCooldown = 300; // Milliseconds to wait between strums
+        this.strumThreshold = 25; // Minimum pixels movement to consider as strumming
+        this.strumCooldown = 400; // Milliseconds to wait between strums
         this.lastStrumTime = 0;
         
         // Track detected patterns
@@ -60,12 +60,12 @@ export class MotionAnalysis {
      */
     processHandData(handData, strummingMotion, chordData, orientations) {
         if (!this.isActive) {
-            console.debug('Motion analysis is not active, skipping hand data processing');
+            // console.debug('Motion analysis is not active, skipping hand data processing');
             return null;
         }
         
         if (!handData) {
-            console.debug('No hand data provided, skipping processing');
+            // console.debug('No hand data provided, skipping processing');
             return null;
         }
         
@@ -91,7 +91,7 @@ export class MotionAnalysis {
                 
                 // Trigger chord change callback
                 if (this.onChordChanged) {
-                    console.debug(`Chord changed to: ${chordData.name}`);
+                    // console.debug(`Chord changed to: ${chordData.name}`);
                     this.onChordChanged(chordData);
                 }
             }
@@ -122,7 +122,7 @@ export class MotionAnalysis {
             
             // Check if we've passed the cooldown period to prevent multiple strums
             if (now - this.lastStrumTime > this.strumCooldown) {
-                console.debug(`Strum detected! Direction: ${strummingMotion.direction}, Time since last strum: ${now - this.lastStrumTime}ms`);
+                // console.debug(`Strum detected! Direction: ${strummingMotion.direction}, Time since last strum: ${now - this.lastStrumTime}ms`);
                 
                 result.strumDetected = true;
                 result.strumDirection = strummingMotion.direction;
@@ -132,13 +132,13 @@ export class MotionAnalysis {
                 
                 // Trigger strum callback
                 if (this.onStrumDetected) {
-                    console.debug('Calling strum callback with result data');
+                    // console.debug('Calling strum callback with result data');
                     this.onStrumDetected(result);
                 } else {
-                    console.warn('No strum callback registered!');
+                    // console.warn('No strum callback registered!');
                 }
             } else {
-                console.debug(`Strum cooldown active. Time since last strum: ${now - this.lastStrumTime}ms`);
+                // console.debug(`Strum cooldown active. Time since last strum: ${now - this.lastStrumTime}ms`);
             }
         }
         
